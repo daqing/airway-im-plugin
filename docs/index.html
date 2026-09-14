@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>airway-im-plugin — Airway 框架的开源 IM 插件</title>
+<meta name="description" content="airway-im-plugin：基于 Airway 框架的通用开源 IM 后端插件。宿主签名凭证身份、单聊群聊、WebSocket 实时投递、断线同步、管理后台，供小程序 / App / 网站前端集成。"/>
+<style>
+:root {
+  --bg: #0d1017;
+  --bg-soft: #131824;
+  --bg-card: #171e2d;
+  --border: #263047;
+  --text: #e8ecf4;
+  --muted: #9aa5b8;
+  --accent: #5b8cff;
+  --accent-soft: rgba(91, 140, 255, .14);
+  --green: #34d399;
+  --code-bg: #0a0d13;
+  --radius: 14px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: "Inter", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+/* nav */
+.nav {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(13, 16, 23, .82);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+.brand { font-weight: 700; font-size: 18px; color: var(--text); }
+.brand span { color: var(--accent); }
+.nav-links { display: flex; gap: 22px; font-size: 14px; }
+.nav-links a { color: var(--muted); }
+.nav-links a:hover { color: var(--text); text-decoration: none; }
+@media (max-width: 760px) { .nav-links { display: none; } }
+
+/* hero */
+.hero { padding: 96px 0 72px; text-align: center; position: relative; overflow: hidden; }
+.hero::before {
+  content: ""; position: absolute; inset: -200px 0 auto; height: 480px;
+  background: radial-gradient(closest-side, rgba(91,140,255,.18), transparent);
+  pointer-events: none;
+}
+.eyebrow {
+  display: inline-block; font-size: 13px; letter-spacing: .12em;
+  color: var(--accent); background: var(--accent-soft);
+  border: 1px solid rgba(91,140,255,.35);
+  padding: 5px 14px; border-radius: 999px; margin-bottom: 24px;
+}
+.hero h1 { font-size: clamp(34px, 5.4vw, 56px); line-height: 1.2; font-weight: 800; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero p.lead { max-width: 720px; margin: 22px auto 0; color: var(--muted); font-size: 17px; }
+.hero-actions { margin-top: 36px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.button {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 26px; border-radius: 10px; font-weight: 600; font-size: 15px;
+  border: 1px solid var(--border); color: var(--text); background: var(--bg-card);
+}
+.button:hover { text-decoration: none; border-color: var(--accent); }
+.button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.button.primary:hover { filter: brightness(1.1); }
+.hero-meta { margin-top: 26px; color: var(--muted); font-size: 13.5px; display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+.hero-meta b { color: var(--green); font-weight: 600; }
+
+/* sections */
+section { padding: 72px 0; border-top: 1px solid var(--border); }
+.section-head { max-width: 760px; margin-bottom: 40px; }
+.section-head .kicker { color: var(--accent); font-size: 13px; letter-spacing: .12em; font-weight: 600; }
+.section-head h2 { font-size: clamp(26px, 3.4vw, 36px); margin: 10px 0 12px; }
+.section-head p { color: var(--muted); }
+
+.grid { display: grid; gap: 18px; }
+.grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 860px) { .grid.cols-2, .grid.cols-3 { grid-template-columns: 1fr; } }
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px;
+}
+.card h3 { font-size: 17px; margin-bottom: 8px; }
+.card p, .card li { color: var(--muted); font-size: 14.5px; }
+.card ul { padding-left: 18px; }
+.card li { margin: 4px 0; }
+.card .card-num {
+  display: block; font-size: 12.5px; font-weight: 700; letter-spacing: .1em;
+  color: var(--accent); margin-bottom: 10px;
+}
+
+/* code */
+pre {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px 20px; overflow-x: auto;
+  font-size: 13.5px; line-height: 1.65;
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+code { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+p code, li code, td code {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 1px 6px; font-size: 13px;
+}
+pre .c { color: #697387; }           /* comment */
+pre .k { color: #c792ea; }           /* keyword */
+pre .s { color: #98e29b; }           /* string */
+pre .f { color: #82aaff; }           /* func */
+pre .n { color: #f78c6c; }           /* number */
+
+/* steps */
+.steps { counter-reset: step; display: grid; gap: 18px; }
+.step {
+  position: relative; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 26px 26px 26px 78px;
+}
+.step::before {
+  counter-increment: step; content: counter(step, decimal-leading-zero);
+  position: absolute; left: 22px; top: 24px;
+  font-size: 15px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); border: 1px solid rgba(91,140,255,.35);
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.step h3 { margin-bottom: 6px; font-size: 17px; }
+.step > p { color: var(--muted); font-size: 14.5px; margin-bottom: 12px; }
+.step pre { margin-top: 10px; }
+
+/* tables */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 13px; letter-spacing: .04em; }
+td { color: var(--text); }
+td.dim { color: var(--muted); }
+.card table td:first-child { white-space: nowrap; }
+
+/* diagram */
+.diagram {
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 28px; overflow-x: auto;
+}
+.diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+.diagram .box { fill: var(--bg-card); stroke: var(--border); rx: 10; }
+.diagram .box-accent { stroke: var(--accent); }
+.diagram text { fill: var(--text); font-family: inherit; }
+.diagram .sub { fill: var(--muted); }
+.diagram .edge { stroke: #46536e; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+.diagram .edge-label { fill: var(--muted); font-size: 11.5px; }
+
+.note {
+  border: 1px solid rgba(91,140,255,.35); background: var(--accent-soft);
+  border-radius: 10px; padding: 14px 18px; font-size: 14px; color: var(--text);
+  margin-top: 16px;
+}
+.note b { color: var(--accent); }
+
+footer { border-top: 1px solid var(--border); padding: 40px 0 56px; color: var(--muted); font-size: 14px; }
+footer .container { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="#top">airway-im-plugin<span>.</span></a>
+    <div class="nav-links">
+      <a href="#intro">项目简介</a>
+      <a href="#goals">项目目标</a>
+      <a href="#architecture">架构</a>
+      <a href="#usage">使用方式</a>
+      <a href="#integration">客户端接入</a>
+      <a href="#admin">管理与运维</a>
+      <a href="https://github.com/daqing/airway-im-plugin">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="container">
+    <span class="eyebrow">AIRWAY 开源框架 · 官方 IM 插件</span>
+    <h1>把完整的 IM 能力<br/>嵌进你的<em>任意项目</em></h1>
+    <p class="lead">
+      airway-im-plugin 是一个自托管的通用 IM 后端：单聊与群聊、WebSocket 实时投递、
+      断线消息同步、内容审核与管理后台。它不复建账号体系 —— 你的项目用自己已有的账号系统，
+      签一个 <code>(name, uuid)</code> 凭证即可接入，小程序、App、浏览器前端通用。
+    </p>
+    <div class="hero-actions">
+      <a class="button primary" href="#integration">接入指南</a>
+      <a class="button" href="https://github.com/daqing/airway-im-plugin">GitHub 仓库 ↗</a>
+    </div>
+    <div class="hero-meta">
+      <span><b>✓</b> 三服务架构 backend / gateway / delivery</span>
+      <span><b>✓</b> SQLite / MySQL / PostgreSQL</span>
+      <span><b>✓</b> Docker Compose 一键启动</span>
+    </div>
+  </div>
+</header>
+
+<section id="intro">
+  <div class="container">
+    <div class="section-head">
+      <div class="kicker">01 / 项目简介</div>
+      <h2>一个插件，一套完整的聊天后台</h2>
+      <p>
+        airway-im-plugin 是基于 <a href="https://github.com/daqing/airway">Airway</a>
+        全栈 Go 框架开发的 IM 插件，IM 业务移植自生产级产品代码库。它把"聊天后台"这件事整体打包：
+        身份、会话、消息、实时推送、管理后台，全部开箱即用。
+      </p>
+    </div>
+    <div class="grid cols-3">
+      <div class="card">
+        <span class="card-num">01</span>
+        <h3>宿主签名凭证身份</h3>
+        <p>不管理密码、不做 OAuth。宿主后端用共享密钥把 <code>(name, uuid)</code> 签成 HMAC 凭证，插件无状态验签，首次认证自动注册用户。支持密钥轮换与单用户凭证撤销。</p>
+      </div>
+      <div class="card">
+        <span class="card-num">02</span>
+        <h3>单聊与群聊</h3>
+        <p>统一会话模型：单聊规范化用户对唯一约束、get-or-create 语义；群聊支持 owner / admin / member 角色。26 位 ULID 不透明 ID，成员历史完整保留。</p>
+      </div>
+      <div class="card">
+        <span class="card-num">03</span>
+        <h3>可靠消息</h3>
+        <p>消息与 outbox 事件同事务落库，投递至少一次。会话内单调递增 sequence，断线后按 <code>after_sequence</code> 精确补拉，客户端按 message_id 去重。</p>
+      </div>
+      <div class="card">
+        <span class="card-num">04</span>
+        <h3>独立 WebSocket 网关</h3>
+        <p>gateway 单独部署、水平扩展：首条消息认证、10 秒认证期限、30s/40s 心跳、有界发送队列，支持同一用户多设备同时在线。</p>
+      </div>
+      <div class="card">
+        <span class="card-num">05</span>
+        <h3>管理后台与审核</h3>
+        <p>会话登录的管理 API：系统状态聚合、注册用户列表与在线情况、群聊浏览、一键 mark-illegal 内容屏蔽，并向在线成员实时扇出审核事件。</p>
+      </div>
+      <div class="card">
+        <span class="card-num">06</span>
+        <h3>随处部署</h3>
+        <p>SQLite 即可本地跑通，生产可切 MySQL / PostgreSQL。文件存储支持本地 / S3 / R2 / COS。提供 Dockerfile 与 docker-compose.yml。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="goals">
+  <div class="container">
+    <div class="section-head">
+      <div class="kicker">02 / 项目目标</div>
+      <h2>让"给我的产品加聊天"变成一下午的事</h2>
+    </div>
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>通用，而不是又一个账号系统</h3>
+        <p>大多数项目已经有自己的账号体系。本插件刻意不碰登录注册：你的后端给每个用户签一个
+          <code>(name, uuid)</code> 二元组凭证，IM 侧验签即认可身份。身份事实永远留在你的系统里。</p>
+      </div>
+      <div class="card">
+        <h3>前端无关</h3>
+        <p>协议只有两样东西：HTTPS REST + 一条 WebSocket。小程序（wx.connectSocket）、
+          iOS / Android App、网页 JS，任何能发 HTTP 和 WebSocket 的客户端都能接入。</p>
+      </div>
+      <div class="card">
+        <h3>可靠语义写进契约</h3>
+        <p>消息先落库再响应；投递 at-least-once；断线用 sequence 补拉而不是依赖 socket。
+          这些不是实现细节，而是写在 <code>docs/design/</code> 里的设计契约。</p>
+      </div>
+      <div class="card">
+        <h3>可运维、可观测</h3>
+        <p>Prometheus 指标、自刷新 dashboard、健康检查、管理状态聚合、凭证撤销与密钥轮换 ——
+          上线需要的运维抓手随插件一起交付。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="container">
+    <div class="section-head">
+      <div class="kicker">03 / 架构</div>
+      <h2>三个服务，各司其职</h2>
+      <p>消息写入与实时投递分离：backend 管数据与一致性，delivery 管 outbox 投递，gateway 管长连接。</p>
+    </div>
+    <div class="diagram">
+      <svg viewBox="0 0 960 340" role="img" aria-label="airway-im-plugin 架构图">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#46536e"></path>
+          </marker>
+        </defs>
+
+        <!-- clients -->
+        <rect class="box" x="30" y="40" width="200" height="60" rx="10"></rect>
+        <text x="130" y="65" text-anchor="middle" font-size="14" font-weight="600">客户端</text>
+        <text class="sub" x="130" y="85" text-anchor="middle" font-size="11.5">小程序 / App / 浏览器 JS</text>
+
+        <!-- host backend -->
+        <rect class="box" x="30" y="150" width="200" height="60" rx="10"></rect>
+        <text x="130" y="175" text-anchor="middle" font-size="14" font-weight="600">宿主项目后端</text>
+        <text class="sub" x="130" y="195" text-anchor="middle" font-size="11.5">已有账号系统 · 签发凭证</text>
+
+        <!-- backend -->
+        <rect class="box box-accent" x="380" y="40" width="220" height="76" rx="10"></rect>
+        <text x="490" y="66" text-anchor="middle" font-size="14.5" font-weight="700">backend :1905</text>
+        <text class="sub" x="490" y="86" text-anchor="middle" font-size="11.5">REST API · 会话/消息/审核</text>
+        <text class="sub" x="490" y="102" text-anchor="middle" font-size="11.5">验签 · 用户注册 · outbox</text>
+
+        <!-- delivery -->
+        <rect class="box box-accent" x="380" y="230" width="220" height="60" rx="10"></rect>
+        <text x="490" y="255" text-anchor="middle" font-size="14.5" font-weight="700">delivery :1920</text>
+        <text class="sub" x="490" y="275" text-anchor="middle" font-size="11.5">事务性 outbox 投递器</text>
+
+        <!-- gateway -->
+        <rect class="box box-accent" x="730" y="120" width="200" height="76" rx="10"></rect>
+        <text x="830" y="146" text-anchor="middle" font-size="14.5" font-weight="700">gateway :1910</text>
+        <text class="sub" x="830" y="166" text-anchor="middle" font-size="11.5">WebSocket 长连接</text>
+        <text class="sub" x="830" y="182" text-anchor="middle" font-size="11.5">多设备 · 有界队列</text>
+
+        <!-- db -->
+        <rect class="box" x="380" y="140" width="220" height="52" rx="10"></rect>
+        <text x="490" y="162" text-anchor="middle" font-size="13.5" font-weight="600">数据库 + outbox_events</text>
+        <text class="sub" x="490" y="180" text-anchor="middle" font-size="11.5">SQLite / MySQL / PostgreSQL</text>
+
+        <!-- edges -->
+        <path class="edge" d="M 230 62 C 300 62 310 70 378 74"></path>
+        <text class="edge-label" x="292" y="52">HTTPS REST</text>
+
+        <path class="edge" d="M 230 180 C 300 180 300 160 378 168"></path>
+        <text class="edge-label" x="262" y="152" font-size="11.5">代签凭证（可选）</text>
+
+        <path class="edge" d="M 600 260 C 660 260 660 190 728 172"></path>
+        <text class="edge-label" x="636" y="232">投递命令</text>
+
+        <path class="edge" d="M 490 230 L 490 194"></path>
+        <text class="edge-label" x="500" y="216">轮询 outbox</text>
+
+        <path class="edge" d="M 600 78 C 670 78 660 120 728 140" stroke-dasharray="5 4"></path>
+        <text class="edge-label" x="640" y="92">验签 /internal/v1/auth</text>
+
+        <path class="edge" d="M 130 100 L 130 150"></path>
+        <text class="edge-label" x="140" y="128">登录时下发凭证</text>
+
+        <path class="edge" d="M 230 70 C 480 20 700 60 830 118"></path>
+        <text class="edge-label" x="520" y="34">WSS 长连接（首条消息认证）</text>
+      </svg>
+    </div>
+    <div class="note">
+      <b>关键设计：</b>WebSocket 投递只是低延迟优化，绝不是消息的持久副本。消息先在一个数据库事务里
+      落库并写入 outbox，再由 delivery 推给 gateway 扇出；离线客户端重连后通过 sequence 同步 API 补拉，
+      天然容忍断线、重复与乱序。
+    </div>
+  </div>
+</section>
+
+<section id="usage">
+  <div class="container">
+    <div class="section-head">
+      <div class="kicker">04 / 使用方式</div>
+      <h2>自托管部署：三条命令跑起来</h2>
+      <p>环境要求：Go 1.26+；本地开发用 SQLite 即可，生产可接 MySQL 8 / PostgreSQL。</p>
+    </div>
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>本地 / 单机部署</h3>
+        <pre><span class="c"># 1. 配置</span>
+cp .env.example .env   <span class="c"># 编辑 DSN、IM_AUTH_SECRET、IM_INTERNAL_SECRET…</span>
+
+<span class="c"># 2. 初始化数据库并迁移</span>
+go run . db:create
+go run . db:migrate
+
+<span class="c"># 3. 启动三个服务（共享 IM_INTERNAL_SECRET）</span>
+go run .                          <span class="c"># backend  :1905</span>
+(cd gateway  &amp;&amp; go run .)       <span class="c"># gateway  :1910</span>
+(cd delivery &amp;&amp; go run .)       <span class="c"># delivery :1920</span></pre>
+      </div>
+      <div class="card">
+        <h3>Docker Compose（推荐）</h3>
+        <pre><span class="c"># 一条命令起整套服务，启动时自动迁移</span>
+docker compose up --build</pre>
+        <h3 style="margin-top:18px">核心环境变量</h3>
+        <table>
+          <tr><th>变量</th><th>说明</th></tr>
+          <tr><td><code>DSN</code></td><td class="dim">数据库连接（sqlite / mysql / postgres）</td></tr>
+          <tr><td><code>IM_AUTH_SECRET</code></td><td class="dim">HMAC 凭证签名密钥，宿主后端共享</td></tr>
+          <tr><td><code>IM_INTERNAL_SECRET</code></td><td class="dim">三服务之间的内部密钥</td></tr>
+          <tr><td><code>IM_ADMIN_USERNAME/PASSWORD</code></td><td class="dim">管理后台登录凭据</td></tr>
+          <tr><td><code>GATEWAY_ALLOWED_ORIGINS</code></td><td class="dim">浏览器端 Origin 白名单</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="integration">
+  <div class="container">
+    <div class="section-head">
+      <div class="kicker">05 / 客户端接入</div>
+      <h2>四步接入：从账号体系到实时收发</h2>
+      <p>
+        客户端（小程序 / App / 浏览器）是不可信环境，<strong>绝不能直接上报自己的 uuid</strong>。
+        正确链路是：宿主后端签发凭证 → 客户端持有凭证 → IM 验签。下面是完整流程。
+      </p>
+    </div>
+
+    <div class="diagram" style="margin-bottom:28px">
+      <svg viewBox="0 0 960 170" role="img" aria-label="认证时序">
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#46536e"></path>
+          </marker>
+        </defs>
+        <rect class="box" x="20" y="20" width="180" height="46" rx="10"></rect>
+        <text x="110" y="48" text-anchor="middle" font-size="13.5" font-weight="600">① 宿主后端</text>
+        <rect class="box" x="280" y="20" width="180" height="46" rx="10"></rect>
+        <text x="370" y="48" text-anchor="middle" font-size="13.5" font-weight="600">② 客户端</text>
+        <rect class="box" x="540" y="20" width="180" height="46" rx="10"></rect>
+        <text x="630" y="48" text-anchor="middle" font-size="13.5" font-weight="600">③ IM backend</text>
+        <rect class="box" x="780" y="20" width="160" height="46" rx="10"></rect>
+        <text x="860" y="48" text-anchor="middle" font-size="13.5" font-weight="600">④ gateway</text>
+        <path class="edge" d="M 200 43 L 276 43" marker-end="url(#arrow2)"></path>
+        <path class="edge" d="M 460 43 L 536 43" marker-end="url(#arrow2)"></path>
+        <path class="edge" d="M 720 43 L 776 43" marker-end="url(#arrow2)"></path>
+        <text class="edge-label" x="110" y="90" text-anchor="middle" font-size="12">HMAC 签名 (name, uuid) 得到 im1.… 凭证</text>
+        <text class="edge-label" x="370" y="90" text-anchor="middle" font-size="12">登录宿主时拿到凭证，缓存并携带</text>
+        <text class="edge-label" x="630" y="90" text-anchor="middle" font-size="12">验签 + 自动注册用户（HTTP API 全走这里）</text>
+        <text class="edge-label" x="860" y="90" text-anchor="middle" font-size="12">WS 首条消息转发验签，绑定连接</text>
+        <text class="edge-label" x="480" y="140" text-anchor="middle" font-size="12.5">之后客户端的一切请求只需要这一个凭证：HTTP 放 Authorization 头，WebSocket 放首条 auth 消息</text>
+      </svg>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <h3>宿主后端签发凭证（两种方案任选）</h3>
+        <p><b>方案 A（推荐）：宿主本地签名。</b>宿主后端持有 <code>IM_AUTH_SECRET</code>，在用户登录/刷新会话时签一个凭证随会话下发，零网络开销，任何语言 10 行实现：</p>
+        <pre><span class="k">func</span> <span class="f">mintCredential</span>(secret, uuid, name <span class="k">string</span>, ttl time.Duration) <span class="k">string</span> {
+    now := time.Now()
+    payload, _ := json.Marshal(<span class="k">map</span>[<span class="k">string</span>]any{
+        <span class="s">"uuid"</span>: uuid, <span class="c">// 宿主侧稳定唯一身份，建议带项目前缀防冲突</span>
+        <span class="s">"name"</span>: name, <span class="c">// 用户名（1-64 字符）</span>
+        <span class="s">"iat"</span>:  now.Unix(),
+        <span class="s">"exp"</span>:  now.Add(ttl).Unix(),
+    })
+    encoded := base64.RawURLEncoding.EncodeToString(payload)
+    mac := hmac.New(sha256.New, []byte(secret))
+    mac.Write([]byte(<span class="s">"im1."</span> + encoded))
+    <span class="k">return</span> <span class="s">"im1."</span> + encoded + <span class="s">"."</span> +
+        base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}</pre>
+        <p style="margin-top:12px"><b>方案 B：调 IM 代签接口。</b>宿主不想持有签名密钥时，在自己登录流程里调 server-to-server 端点（凭证默认 24h 过期，且自动带 <code>token_version</code>、支持撤销）：</p>
+        <pre>curl -X POST https://im.example.com/internal/v1/credentials \
+  -H <span class="s">"X-IM-Internal-Secret: &lt;IM_INTERNAL_SECRET&gt;"</span> \
+  -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">'{"uuid":"shop1:user-42","name":"alice","nickname":"Alice","ttl_seconds":86400}'</span>
+<span class="c"># → {"code":0,"data":{"credential":"im1.…","expires_at":"…"}}</span></pre>
+      </div>
+
+      <div class="step">
+        <h3>客户端调用 REST API：一个 Bearer 头走天下</h3>
+        <p>所有 IM 接口返回统一信封 <code>{"code":0,"data":…,"message":null}</code>，<code>code</code> 非 0 即失败（10001 = 凭证无效或过期）。</p>
+        <pre><span class="c">// 浏览器 / App 通用：fetch 示例</span>
+<span class="k">const</span> api = (path, options = {}) =&gt; <span class="f">fetch</span>(<span class="s">"https://im.example.com/api/v1"</span> + path, {
+  ...options,
+  headers: {
+    <span class="s">"Authorization"</span>: <span class="s">`Bearer <span>${credential}</span>`</span>,   <span class="c">// 宿主下发的 im1.… 凭证</span>
+    <span class="s">"Content-Type"</span>: <span class="s">"application/json"</span>,
+    ...(options.headers || {}),                  <span class="c">// 允许调用方追加头</span>
+  },
+}).then(r =&gt; r.json());
+
+<span class="c">// 创建单聊（同一对用户幂等，永远得到同一个会话）</span>
+<span class="k">await</span> <span class="f">api</span>(<span class="s">"/conversations"</span>, { method: <span class="s">"POST"</span>,
+  body: JSON.stringify({ kind: <span class="s">"direct"</span>, member_ids: [bobId] }) });
+
+<span class="c">// 发消息（带 Idempotency-Key 可安全重试）</span>
+<span class="k">await</span> <span class="f">api</span>(<span class="s">"/messages"</span>, { method: <span class="s">"POST"</span>,
+  headers: { <span class="s">"Idempotency-Key"</span>: crypto.randomUUID() },
+  body: JSON.stringify({ conversation_id: convId, content: <span class="s">"你好！"</span>,
+                         content_type: <span class="s">"text/markdown"</span> }) });
+
+<span class="c">// 断线补拉：按 sequence 拉取错过的消息</span>
+<span class="k">await</span> <span class="f">api</span>(<span class="s">`/conversations/<span>${convId}</span>/messages?after_sequence=<span>${lastSeq}</span>`</span>);</pre>
+      </div>
+
+      <div class="step">
+        <h3>建立 WebSocket 实时通道</h3>
+        <p>连接 <code>wss://gateway-host/ws</code> 后，<strong>10 秒内</strong>必须用第一条消息完成认证；之后保持心跳即可接收推送。</p>
+        <pre><span class="c">// 浏览器 JS</span>
+<span class="k">const</span> ws = <span class="k">new</span> <span class="f">WebSocket</span>(<span class="s">"wss://im-gateway.example.com/ws"</span>);
+ws.onopen = () =&gt; ws.<span class="f">send</span>(JSON.stringify({
+  cmd: <span class="s">"auth"</span>, opts: [credential],          <span class="c">// 第一条消息必须是 auth</span>
+}));
+ws.onmessage = (e) =&gt; {
+  <span class="k">const</span> frame = JSON.parse(e.data);
+  <span class="k">if</span> (frame.code === <span class="n">0</span> &amp;&amp; frame.data === <span class="s">"OK"</span>) { <span class="c">/* 认证成功 */</span> }
+  <span class="k">else if</span> (frame.event === <span class="s">"message.created"</span>) {
+    <span class="c">// 新消息事件：{message_id, conversation_id, sequence, …}</span>
+    <span class="c">// 若 sequence 与本地不连续，用 after_sequence 补拉缺口</span>
+  }
+};</pre>
+        <pre><span class="c">// 微信小程序（逻辑完全一致）</span>
+<span class="k">const</span> socket = wx.<span class="f">connectSocket</span>({ url: <span class="s">"wss://im-gateway.example.com/ws"</span> });
+socket.<span class="f">onOpen</span>(() =&gt; socket.<span class="f">send</span>({
+  data: JSON.stringify({ cmd: <span class="s">"auth"</span>, opts: [credential] }),
+}));
+socket.<span class="f">onMessage</span>((res) =&gt; {
+  <span class="k">const</span> frame = JSON.parse(res.data);
+  <span class="c">// 与浏览器端相同的处理逻辑</span>
+});</pre>
+        <div class="note">
+          <b>重连注意事项：</b>认证失败后 gateway 以关闭码 <code>1008</code> 断开。客户端应退避重连；
+          若凭证已过期，<b>先向宿主后端重新获取凭证再重连</b>。切勿依赖 socket 恢复错过的消息 —— 重连后用
+          <code>after_sequence</code> 补拉。
+        </div>
+      </div>
+
+      <div class="step">
+        <h3>常用端点速查</h3>
+        <p>完整契约见仓库 <code>docs/api/openapi.md</code>。</p>
+        <table>
+          <tr><th>方法与路径</th><th>用途</th></tr>
+          <tr><td><code>GET /api/v1/me</code></td><td class="dim">当前用户资料</td></tr>
+          <tr><td><code>POST /api/v1/conversations</code></td><td class="dim">创建单聊 / 群聊</td></tr>
+          <tr><td><code>GET /api/v1/conversations?type=group</code></td><td class="dim">列出我的群聊</td></tr>
+          <tr><td><code>GET /api/v1/conversations/:id</code></td><td class="dim">会话详情与成员</td></tr>
+          <tr><td><code>GET /api/v1/conversations/:id/messages?after_sequence=N</code></td><td class="dim">历史消息 / 断线同步</td></tr>
+          <tr><td><code>POST /api/v1/messages</code></td><td class="dim">发送消息（支持幂等键）</td></tr>
+          <tr><td><code>POST /api/v1/storage</code></td><td class="dim">上传图片 / 文件附件</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="admin">
+  <div class="container">
+    <div class="section-head">
+      <div class="kicker">06 / 管理与运维</div>
+      <h2>上线之后的抓手，也都内置了</h2>
+    </div>
+    <div class="grid cols-3">
+      <div class="card">
+        <h3>用户可视</h3>
+        <p>首次认证自动注册用户。<code>GET /admin/api/users</code> 列出全部注册用户及最近活跃时间；<code>GET /admin/api/status</code> 聚合在线用户与三服务指标。</p>
+      </div>
+      <div class="card">
+        <h3>凭证撤销</h3>
+        <p><code>POST /admin/api/users/:uuid/revoke</code> 递增 token_version，立即使该用户全部已签发凭证失效，并踢掉 gateway 在线连接。密钥泄露时可轮换 <code>IM_AUTH_SECRET</code> 一键全量失效。</p>
+      </div>
+      <div class="card">
+        <h3>内容审核</h3>
+        <p>群聊浏览、消息查看、一键 mark-illegal：违规内容对客户端屏蔽为 ***，并向在线成员实时扇出 <code>message.moderated</code> 事件。</p>
+      </div>
+      <div class="card">
+        <h3>可观测</h3>
+        <p>gateway / delivery 暴露 Prometheus 风格 <code>/metrics</code> 与自刷新 <code>/dashboard</code>，另有 <code>/healthz</code>、<code>/readyz</code> 探针。</p>
+      </div>
+      <div class="card">
+        <h3>水平扩展</h3>
+        <p>backend 无状态可多实例；gateway 按连接数扩展，多实例在线列表由调用方合并；delivery 轮询间隔可调。</p>
+      </div>
+      <div class="card">
+        <h3>设计契约文档</h3>
+        <ul>
+          <li><a href="https://github.com/daqing/airway-im-plugin/blob/main/docs/design/identity.md">identity.md — 凭证与接入规范</a></li>
+          <li><a href="https://github.com/daqing/airway-im-plugin/blob/main/docs/design/gateway.md">gateway.md — 通信协议</a></li>
+          <li><a href="https://github.com/daqing/airway-im-plugin/blob/main/docs/design/delivery.md">delivery.md — 投递语义</a></li>
+          <li><a href="https://github.com/daqing/airway-im-plugin/blob/main/docs/api/openapi.md">openapi.md — 客户端契约</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div>
+      <b style="color:var(--text)">airway-im-plugin</b> · Airway 开源框架的 IM 插件<br/>
+      MIT License · Built with Go, Gin, templ
+    </div>
+    <div>
+      <a href="https://github.com/daqing/airway-im-plugin">GitHub</a> ·
+      <a href="https://github.com/daqing/airway-im-plugin/blob/main/README.md">README</a> ·
+      <a href="https://github.com/daqing/airway-im-plugin/blob/main/docs/README.zh-cn.md">中文文档</a> ·
+      <a href="https://github.com/daqing/airway-im-plugin/issues">Issues</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
