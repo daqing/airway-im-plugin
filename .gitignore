@@ -1,0 +1,19 @@
+/bin
+/tmp
+
+# Locally built service binaries
+/gateway/gateway
+/delivery/delivery
+
+.env
+.env.local
+
+/data
+!/data/.keep
+
+/data/storage
+!/data/storage/.keep
+
+*.sock
+
+schema.json
