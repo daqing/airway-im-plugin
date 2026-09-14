@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>airway-im-plugin — Airway 框架的开源 IM 插件</title>
 <meta name="description" content="airway-im-plugin：基于 Airway 框架的通用开源 IM 后端插件。宿主签名凭证身份、单聊群聊、WebSocket 实时投递、断线同步、管理后台，供小程序 / App / 网站前端集成。"/>
+<script>
+// 尽早设置主题，避免首屏闪烁：手动选择（localStorage）优先，否则跟随系统。
+(function () {
+  var theme = null;
+  try { theme = localStorage.getItem("im-docs-theme"); } catch (e) {}
+  if (!theme) {
+    theme = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+  document.documentElement.setAttribute("data-theme", theme);
+})();
+</script>
 <style>
 :root {
   --bg: #0d1017;
@@ -17,7 +28,27 @@
   --accent-soft: rgba(91, 140, 255, .14);
   --green: #34d399;
   --code-bg: #0a0d13;
+  --code-text: #e8ecf4;
+  --code-inline-bg: #0a0d13;
+  --code-inline-text: #e8ecf4;
+  --nav-bg: rgba(13, 16, 23, .82);
   --radius: 14px;
+}
+:root[data-theme="light"] {
+  --bg: #f5f6fa;
+  --bg-soft: #ffffff;
+  --bg-card: #ffffff;
+  --border: #dfe4ef;
+  --text: #1c2333;
+  --muted: #5a6577;
+  --accent: #2f62d9;
+  --accent-soft: rgba(47, 98, 217, .08);
+  --green: #0d9e6b;
+  --code-bg: #10141d;
+  --code-text: #e8ecf4;
+  --code-inline-bg: #eceff6;
+  --code-inline-text: #24304a;
+  --nav-bg: rgba(245, 246, 250, .82);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
@@ -26,6 +57,7 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.7;
+  transition: background-color .25s ease, color .25s ease;
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -34,17 +66,23 @@ a:hover { text-decoration: underline; }
 /* nav */
 .nav {
   position: sticky; top: 0; z-index: 50;
-  background: rgba(13, 16, 23, .82);
+  background: var(--nav-bg);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
 .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; }
 .brand { font-weight: 700; font-size: 18px; color: var(--text); }
 .brand span { color: var(--accent); }
-.nav-links { display: flex; gap: 22px; font-size: 14px; }
+.nav-links { display: flex; gap: 22px; font-size: 14px; align-items: center; }
 .nav-links a { color: var(--muted); }
 .nav-links a:hover { color: var(--text); text-decoration: none; }
-@media (max-width: 760px) { .nav-links { display: none; } }
+.theme-toggle {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  font: inherit; font-size: 13px; padding: 5px 14px; border-radius: 999px;
+  cursor: pointer; white-space: nowrap;
+}
+.theme-toggle:hover { color: var(--text); border-color: var(--accent); }
+@media (max-width: 760px) { .nav-links a { display: none; } }
 
 /* hero */
 .hero { padding: 96px 0 72px; text-align: center; position: relative; overflow: hidden; }
@@ -88,6 +126,10 @@ section { padding: 72px 0; border-top: 1px solid var(--border); }
 .card {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 24px;
+  transition: background-color .25s ease, border-color .25s ease;
+}
+:root[data-theme="light"] .card {
+  box-shadow: 0 1px 3px rgba(28, 35, 51, .06);
 }
 .card h3 { font-size: 17px; margin-bottom: 8px; }
 .card p, .card li { color: var(--muted); font-size: 14.5px; }
@@ -102,13 +144,13 @@ section { padding: 72px 0; border-top: 1px solid var(--border); }
 pre {
   background: var(--code-bg); border: 1px solid var(--border);
   border-radius: 10px; padding: 18px 20px; overflow-x: auto;
-  font-size: 13.5px; line-height: 1.65;
+  font-size: 13.5px; line-height: 1.65; color: var(--code-text);
   font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 code { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
-p code, li code, td code {
-  background: var(--code-bg); border: 1px solid var(--border);
-  border-radius: 6px; padding: 1px 6px; font-size: 13px;
+p code, li code, td code, .step p code {
+  background: var(--code-inline-bg); border: 1px solid var(--border); color: var(--code-inline-text);
+  border-radius: 6px; padding: 3px 8px; font-size: 13px;
 }
 pre .c { color: #697387; }           /* comment */
 pre .k { color: #c792ea; }           /* keyword */
@@ -179,6 +221,7 @@ footer .container { display: flex; justify-content: space-between; gap: 20px; fl
       <a href="#integration">客户端接入</a>
       <a href="#admin">管理与运维</a>
       <a href="https://github.com/daqing/airway-im-plugin">GitHub ↗</a>
+      <button type="button" id="theme-toggle" class="theme-toggle" aria-label="切换浅色 / 深色主题">浅色模式</button>
     </div>
   </div>
 </nav>
@@ -593,6 +636,39 @@ socket.<span class="f">onMessage</span>((res) =&gt; {
     </div>
   </div>
 </footer>
+
+<script>
+(function () {
+  var KEY = "im-docs-theme";
+  var root = document.documentElement;
+  var mq = window.matchMedia("(prefers-color-scheme: light)");
+  var btn = document.getElementById("theme-toggle");
+
+  function stored() {
+    try { return localStorage.getItem(KEY); } catch (e) { return null; }
+  }
+  function systemTheme() { return mq.matches ? "light" : "dark"; }
+  function current() { return root.getAttribute("data-theme") || systemTheme(); }
+  function apply(theme) {
+    root.setAttribute("data-theme", theme);
+    btn.textContent = theme === "light" ? "深色模式" : "浅色模式";
+    btn.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
+  }
+
+  btn.addEventListener("click", function () {
+    var next = current() === "light" ? "dark" : "light";
+    try { localStorage.setItem(KEY, next); } catch (e) {}
+    apply(next);
+  });
+
+  // 未手动选择过主题时，跟随系统切换
+  mq.addEventListener("change", function () {
+    if (!stored()) apply(systemTheme());
+  });
+
+  apply(current());
+})();
+</script>
 
 </body>
 </html>
