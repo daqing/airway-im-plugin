@@ -1,6 +1,6 @@
 # airway-im-plugin（中文文档）
 
-一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：宿主签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。仓库同时在 [`deps/backend/`](../deps/backend/) 提供了一个启用本插件的可独立运行宿主应用，可以单独起整套服务。
+一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：宿主签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。配套的 gateway 与 delivery 服务随插件一起在 [`deps/`](../deps/) 下分发，在任何启用本插件的 Airway 宿主应用中即可独立跑起整套服务。
 
 IM 实现移植自 KongChat 产品代码库，并适配到当前版本的 Airway 框架。参考项目特有的
 GitHub OAuth 登录被有意去掉 —— 它是产品专属逻辑，与 IM 核心无关 —— 插件改为通过
@@ -125,7 +125,6 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | 路径 | 角色 | 默认端口 |
 | --- | --- | --- |
 | 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API、内部 API、迁移、REPL 模型 | — |
-| [`deps/backend/`](../deps/backend/) | 独立可运行宿主应用（package main，通过 `plugin:install` 随插件装入宿主），通过 blank import 启用插件：落地页、健康检查、存储 API | 1905 |
 | [`deps/gateway/`](../deps/gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：WebSocket 网关 | 1910 |
 | [`deps/delivery/`](../deps/delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：事务性 outbox 投递器 | 1920 |
 | [`docs/`](.) | 设计文档、API 指南、OpenAPI 契约、中文文档 | — |
@@ -147,7 +146,8 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 ## 安装与启动
 
 环境要求：Go 1.26+，本地 SQLite（文件或 `:memory:`）或 MySQL/PostgreSQL
-服务。可选：`overmind` + `tmux`（用于 `just dev`）、Docker（用于 compose）。
+服务。可选：Docker（gateway/delivery 各自附带 `Containerfile`，可容器化
+部署）。
 
 ### 作为插件使用
 
@@ -161,48 +161,44 @@ go run . plugin:install github.com/daqing/airway-im-plugin   # 在宿主应用�
 `plugins.go` 添加 blank import `_ "github.com/daqing/airway-im-plugin"`；
 import 时插件注册其路由（`/api/v1/...`、`/admin/api`、`/internal/v1`）、
 Go DSL 迁移和 `User` REPL 模型。`plugin:install` 还会把插件的 `deps/`
-目录原样复制进宿主项目根目录 —— `backend/` 独立宿主应用与 `gateway/`、
-`delivery/` 两个配套服务由此到达宿主（配套服务的 `go.mod.templ` 落地为
-`go.mod`，已存在的文件不会被覆盖）。
-然后执行宿主的 `db:migrate` 创建 IM 表，
+目录原样复制进宿主项目根目录 —— `gateway/`、`delivery/` 两个配套服务
+由此到达宿主（它们的 `go.mod.templ` 落地为 `go.mod`，已存在的文件不会
+被覆盖）。然后执行宿主的 `db:migrate` 创建 IM 表，
 并在宿主环境中设置 `IM_AUTH_SECRET`（实时链路还需 `IM_INTERNAL_SECRET`）。
 
 ### 独立运行
 
-`deps/backend/` 目录是一个可运行的宿主应用（落地页、健康检查、存储 API），
-通过 blank import 启用了 IM 插件：
+任何启用了本插件的 Airway 宿主应用都是完整的 IM backend。想单独跑起整套
+服务，只需脚手架一个新的宿主、安装插件、启动三个服务：
 
 ```bash
-cp .env.example .env          # 然后编辑 DSN、IM_AUTH_SECRET、IM_INTERNAL_SECRET、IM_ADMIN_PASSWORD…
-go run ./deps/backend db:create    # 创建数据库（驱动支持时）
-go run ./deps/backend db:migrate   # 应用 IM 迁移
-go run ./deps/backend              # 启动 backend，监听 :1905（或：`go run ./deps/backend server`）
+go install github.com/daqing/airway@latest
+airway new myim && cd myim
+go run . plugin:install github.com/daqing/airway-im-plugin
+
+# 编辑 .env：PORT=1905、DSN、IM_AUTH_SECRET、IM_INTERNAL_SECRET、IM_ADMIN_PASSWORD…
+# （本仓库的 .env.example 列出了全部 IM 变量）
+go run . db:create    # 创建数据库（驱动支持时）
+go run . db:migrate   # 应用 IM 迁移
+go run . server       # 启动 backend，监听 :1905
 ```
 
 IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注册，因此必须通过
-**backend 二进制**执行（`go run ./deps/backend db:migrate`），独立的 `airway` CLI 看不到它们。
+**宿主二进制**执行（`go run . db:migrate`），独立的 `airway` CLI 看不到它们。
 
-本地同时运行三个服务（必须共享同一个 `IM_INTERNAL_SECRET`）。配套服务位于
-`deps/` 下，其模块文件以 `go.mod.templ` 形式随插件分发（Go module zip 会丢弃嵌套的
-`go.mod`）；`just dev` 会自动生成本地 `go.mod` 副本，手动启动则先执行一次
-`just deps-setup`：
+再从 `plugin:install` 复制进宿主的 `deps/` 目录启动两个配套服务（三个服务
+必须共享同一个 `IM_INTERNAL_SECRET`）：
 
 ```bash
-just dev                                                          # 通过 overmind
-
-# 或手动启动：
-just deps-setup                                                   # 一次性：deps/*/go.mod.templ -> go.mod
-go run ./deps/backend                                                  # backend :1905
 (cd deps/gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)   # gateway :1910
 (cd deps/delivery && BACKEND_URL=http://127.0.0.1:1905 \
                      GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
 
-或用 Docker Compose 一键起整套服务（启动时自动迁移）：
-
-```bash
-docker compose up --build
-```
+配套服务的模块文件以 `go.mod.templ` 形式随插件分发（Go module zip 会丢弃嵌套的
+`go.mod`），`plugin:install` 会在宿主中将其落地为 `go.mod`。想直接开发本仓库，
+用 `replace` 指令把宿主的 `go.mod` 指向本地检出，并在本仓库执行一次
+`just deps-setup` 生成 `deps/*/go.mod`，即可直接 `go run`。
 
 ## 用户认证
 
@@ -324,12 +320,9 @@ HTTP API 一览：
 
 ```bash
 go test ./...                # 单元测试（im/admin/me/routes…）
+just deps-setup              # 一次性：deps/*/go.mod.templ -> go.mod
 (cd deps/gateway && go vet . && go build .)
 (cd deps/delivery && go vet . && go build .)
-just dev                     # 同时运行 backend + gateway + delivery + templ 监听
-just generate                # 编辑 .templ 视图后重新生成 *_templ.go
-go run ./deps/backend repl        # 交互式 REPL（含本插件模型）
-go run ./deps/backend db:rollback # 回滚最近一次迁移
 ```
 
 测试覆盖：会话创建（单聊唯一性、成员校验）、消息持久化（幂等、
@@ -353,7 +346,7 @@ IM 业务逻辑是对参考 backend 的忠实移植；以下差异仅源于当�
 - **ULID 辅助函数。** 该框架版本没有 `utils.NewULID`，现位于 `app/utils`。
 - **迁移。** 保持 Go DSL 形式（IM 表结构与参考一致），但文件名不带数字
   前缀，避免框架 SQL 优先 CLI 的告警；迁移在插件被启用时随 init 注册，
-  由启用它的宿主二进制执行（本仓库的 `deps/backend`）。
+  由启用它的宿主二进制执行。
 - **命名。** 产品专有的 `KONGCHAT_*` 环境变量改为 `IM_AUTH_SECRET`、
   `IM_INTERNAL_SECRET`、`IM_ADMIN_USERNAME`、`IM_ADMIN_PASSWORD`；内部请求头
   `X-KongChat-Internal-Secret` 改为 `X-IM-Internal-Secret`；

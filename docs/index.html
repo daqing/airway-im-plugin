@@ -242,7 +242,7 @@ footer .container { display: flex; justify-content: space-between; gap: 20px; fl
     <div class="hero-meta">
       <span><b>✓</b> 三服务架构 backend / gateway / delivery</span>
       <span><b>✓</b> SQLite / MySQL / PostgreSQL</span>
-      <span><b>✓</b> Docker Compose 一键启动</span>
+      <span><b>✓</b> plugin:install 一键安装</span>
     </div>
   </div>
 </header>
@@ -287,7 +287,7 @@ footer .container { display: flex; justify-content: space-between; gap: 20px; fl
       <div class="card">
         <span class="card-num">06</span>
         <h3>随处部署</h3>
-        <p>SQLite 即可本地跑通，生产可切 MySQL / PostgreSQL。文件存储支持本地 / S3 / R2 / COS。提供 Dockerfile 与 docker-compose.yml。</p>
+        <p>SQLite 即可本地跑通，生产可切 MySQL / PostgreSQL。文件存储支持本地 / S3 / R2 / COS。gateway / delivery 附带 Containerfile，可容器化部署。</p>
       </div>
     </div>
   </div>
@@ -409,7 +409,7 @@ footer .container { display: flex; justify-content: space-between; gap: 20px; fl
       <h2>两种用法：嵌进宿主，或独立部署</h2>
       <p>
         仓库根目录就是插件包（Go module <code>github.com/daqing/airway-im-plugin</code>），可装进任意 Airway 宿主应用；
-        仓库自带的 <code>deps/backend/</code> 目录是一个已启用该插件的完整宿主应用，可独立跑起整套服务。
+        任何启用了本插件的宿主应用都是完整的 IM backend，配合 <code>deps/</code> 下的 gateway / delivery 即可独立跑起整套服务。
         环境要求：Go 1.26+；本地开发用 SQLite 即可，生产可接 MySQL 8 / PostgreSQL。
       </p>
     </div>
@@ -420,31 +420,31 @@ footer .container { display: flex; justify-content: space-between; gap: 20px; fl
 go run . plugin:install github.com/daqing/airway-im-plugin</pre>
         <p style="margin-top:12px">启用即在宿主的 <code>plugins.go</code> 中加入 blank import，插件自动注册
           <code>/api/v1/...</code>、<code>/admin/api</code>、<code>/internal/v1</code> 路由、Go DSL 迁移和
-          <code>User</code> REPL 模型；同时把插件 <code>deps/</code> 目录下的 backend、gateway、delivery
+          <code>User</code> REPL 模型；同时把插件 <code>deps/</code> 目录下的 gateway、delivery
           复制进宿主项目根目录（<code>go.mod.templ</code> 落地为 <code>go.mod</code>，已存在的文件不会覆盖）。
           随后在宿主环境设置 <code>IM_AUTH_SECRET</code>
           （实时链路再加 <code>IM_INTERNAL_SECRET</code>），并执行宿主自己的 <code>db:migrate</code> 建表。</p>
       </div>
       <div class="card">
-        <h3>独立部署（仓库自带 deps/backend/）</h3>
-        <pre><span class="c"># 1. 配置</span>
-cp .env.example .env   <span class="c"># 编辑 DSN、IM_AUTH_SECRET、IM_INTERNAL_SECRET…</span>
+        <h3>独立部署（脚手架一个新宿主）</h3>
+        <pre><span class="c"># 1. 脚手架一个 Airway 宿主应用并安装插件</span>
+go install github.com/daqing/airway@latest
+airway new myim &amp;&amp; cd myim
+go run . plugin:install github.com/daqing/airway-im-plugin
 
-<span class="c"># 2. 初始化数据库并迁移</span>
-go run ./deps/backend db:create
-go run ./deps/backend db:migrate
+<span class="c"># 2. 编辑 .env（PORT=1905、DSN、IM_AUTH_SECRET、</span>
+<span class="c">#    IM_INTERNAL_SECRET…），初始化数据库并迁移</span>
+go run . db:create
+go run . db:migrate
 
 <span class="c"># 3. 启动三个服务（共享 IM_INTERNAL_SECRET）</span>
-<span class="c">#    gateway/delivery 在 deps/ 下，先 just deps-setup 生成本地 go.mod</span>
-go run ./deps/backend                        <span class="c"># backend  :1905</span>
+<span class="c">#    gateway/delivery 由 plugin:install 复制到宿主 deps/ 下</span>
+go run . server                           <span class="c"># backend  :1905</span>
 (cd deps/gateway  &amp;&amp; go run .)        <span class="c"># gateway  :1910</span>
 (cd deps/delivery &amp;&amp; go run .)        <span class="c"># delivery :1920</span></pre>
       </div>
       <div class="card">
-        <h3>Docker Compose（推荐）</h3>
-        <pre><span class="c"># 一条命令起整套服务，启动时自动迁移</span>
-docker compose up --build</pre>
-        <h3 style="margin-top:18px">核心环境变量</h3>
+        <h3>核心环境变量</h3>
         <table>
           <tr><th>变量</th><th>说明</th></tr>
           <tr><td><code>DSN</code></td><td class="dim">数据库连接（sqlite / mysql / postgres）</td></tr>
@@ -642,7 +642,7 @@ socket.<span class="f">onMessage</span>((res) =&gt; {
   <div class="container">
     <div>
       <b style="color:var(--text)">airway-im-plugin</b> · Airway 开源框架的 IM 插件<br/>
-      MIT License · Built with Go, Gin, templ
+      MIT License · Built with Go, Gin
     </div>
     <div>
       <a href="https://github.com/daqing/airway-im-plugin">GitHub</a> ·

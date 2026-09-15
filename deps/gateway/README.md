@@ -49,4 +49,4 @@ full protocol, limits, and delivery semantics.
 go run .            # expects the backend on 127.0.0.1:1905
 ```
 
-or via the repository's `docker-compose.yml`.
+or as a container via the shipped `Containerfile`.

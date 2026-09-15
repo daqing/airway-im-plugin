@@ -1,4 +1,0 @@
-web: AIRWAY_ENV=local air
-gateway: cd deps/gateway && go run .
-delivery: cd deps/delivery && go run .
-templ: cd deps/backend && go tool templ generate -watch
