@@ -12,10 +12,10 @@ install:
   brew install tmux
   brew install overmind
 
-# Regenerate *_templ.go from the .templ views under backend/app/views.
+# Regenerate *_templ.go from the .templ views under deps/backend/app/views.
 generate:
   go generate ./...
 
 # Regenerate the views, then keep them fresh while you edit .templ files.
 generate-watch:
-  cd backend && go tool templ generate -watch
+  cd deps/backend && go tool templ generate -watch

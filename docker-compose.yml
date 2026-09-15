@@ -25,6 +25,7 @@ services:
       STORAGE_ROOT: /data/storage
       IM_ADMIN_USERNAME: ${IM_ADMIN_USERNAME:-admin}
       IM_ADMIN_PASSWORD: ${IM_ADMIN_PASSWORD:-airway-im-local-admin-password}
+      IM_AUTH_SECRET: ${IM_AUTH_SECRET:-airway-im-local-development-auth-secret}
       ADMIN_GATEWAY_METRICS_URL: http://gateway:1910/metrics
       ADMIN_DELIVERY_METRICS_URL: http://delivery:1920/metrics
     ports:

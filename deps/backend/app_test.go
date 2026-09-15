@@ -103,7 +103,7 @@ func TestCORSAnswersPreflight(t *testing.T) {
 }
 
 func TestVersionMatchesVERSIONFile(t *testing.T) {
-	contents, err := os.ReadFile("../VERSION")
+	contents, err := os.ReadFile("../../VERSION")
 	if err != nil {
 		t.Fatalf("read VERSION: %v", err)
 	}

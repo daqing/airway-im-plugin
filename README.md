@@ -5,7 +5,7 @@ complete IM chat backend: host-signed credential identity, direct
 and group conversations, durable messaging with sequence-based
 synchronization, an admin API with content moderation, a WebSocket gateway,
 and a transactional-outbox delivery worker. The repository also ships a
-runnable host app under [`backend/`](backend/) that enables the plugin, so
+runnable host app under [`deps/backend/`](deps/backend/) that enables the plugin, so
 the whole stack can run standalone.
 
 The IM implementation was ported from the KongChat product codebase and
@@ -145,7 +145,7 @@ Design contracts:
 | Path | Role | Default port |
 | --- | --- | --- |
 | repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin (package `implugin`): IM API, admin API, internal API, migrations, REPL models | — |
-| [`backend/`](backend/) | Standalone host app (package main) enabling the plugin: home page, health check, storage API | 1905 |
+| [`deps/backend/`](deps/backend/) | Standalone host app (package main, shipped to hosts via `plugin:install`) enabling the plugin: home page, health check, storage API | 1905 |
 | [`deps/gateway/`](deps/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
 | [`deps/delivery/`](deps/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
 | [`docs/`](docs/) | Design docs, API guides, OpenAPI contract, 中文文档 | — |
@@ -185,27 +185,27 @@ directory instead. Enabling adds a blank import
 import the plugin registers its routes (`/api/v1/...`, `/admin/api`,
 `/internal/v1`), its Go DSL migrations, and the `User` REPL model.
 `plugin:install` also copies the plugin's `deps/` tree into the host project
-root — that is how the `gateway/` and `delivery/` companion services arrive
-(their `go.mod.templ` files are installed as `go.mod`; existing files are
-never overwritten). Run the
+root — that is how the `backend/` standalone host app and the `gateway/` and
+`delivery/` companion services arrive (the companion services' `go.mod.templ`
+files are installed as `go.mod`; existing files are never overwritten). Run the
 host's `db:migrate` to create the IM tables, and set `IM_AUTH_SECRET` (plus
 `IM_INTERNAL_SECRET` for the realtime path) in the host's environment.
 
 ### Running standalone
 
-The `backend/` directory is a runnable host app (home page, health check,
+The `deps/backend/` directory is a runnable host app (home page, health check,
 storage API) with the IM plugin enabled via blank import:
 
 ```bash
 cp .env.example .env          # then edit DSN, IM_AUTH_SECRET, IM_INTERNAL_SECRET, IM_ADMIN_PASSWORD…
-go run ./backend db:create    # create the database (when the driver supports it)
-go run ./backend db:migrate   # apply the IM migrations
-go run ./backend              # start the backend on :1905 (or: `go run ./backend server`)
+go run ./deps/backend db:create    # create the database (when the driver supports it)
+go run ./deps/backend db:migrate   # apply the IM migrations
+go run ./deps/backend              # start the backend on :1905 (or: `go run ./deps/backend server`)
 ```
 
 The IM migrations are Go DSL changes under `db/migrate/`; they register on
 init through the plugin package and therefore run through the backend binary
-(`go run ./backend db:migrate`), not the standalone `airway` CLI.
+(`go run ./deps/backend db:migrate`), not the standalone `airway` CLI.
 
 Run all three services locally (they must share `IM_INTERNAL_SECRET`). The
 companion services live under `deps/` and ship their module files as
@@ -218,7 +218,7 @@ just dev                                                          # via overmind
 
 # or by hand:
 just deps-setup                                                   # one-time: deps/*/go.mod.templ -> go.mod
-go run ./backend                                                  # backend :1905
+go run ./deps/backend                                                  # backend :1905
 (cd deps/gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)   # gateway :1910
 (cd deps/delivery && BACKEND_URL=http://127.0.0.1:1905 \
                      GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
@@ -362,8 +362,8 @@ go test ./...                # unit tests (im/admin/me/routes…)
 (cd deps/delivery && go vet . && go build .)
 just dev                     # run backend + gateway + delivery + templ watch
 just generate                # regenerate *_templ.go after editing .templ views
-go run ./backend repl        # interactive REPL with this project's models
-go run ./backend db:rollback # roll back the last migration
+go run ./deps/backend repl        # interactive REPL with this project's models
+go run ./deps/backend db:rollback # roll back the last migration
 ```
 
 The test suite covers conversation creation (direct uniqueness,
@@ -394,7 +394,7 @@ packaging required adaptation:
 - **Migrations.** Kept as Go DSL changes (same IM schema as the reference),
   but files are named without a numeric prefix so the framework's SQL-first
   CLI does not warn; they register via init when the plugin is enabled and run
-  through the enabling host binary (this repo's `backend`).
+  through the enabling host binary (this repo's `deps/backend`).
 - **Naming.** Product-specific `KONGCHAT_*` environment variables became
   `IM_AUTH_SECRET`, `IM_INTERNAL_SECRET`, `IM_ADMIN_USERNAME`,
   `IM_ADMIN_PASSWORD`; the internal header `X-KongChat-Internal-Secret`

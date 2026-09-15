@@ -22,7 +22,7 @@ import (
 // Any other argument is dispatched to the Airway CLI compiled into this
 // binary, so project-local code (REPL models, plugins, Go DSL migrations
 // registered by the IM plugin) is visible to commands like
-// `go run ./backend repl`.
+// `go run ./deps/backend repl`.
 func main() {
 	args := os.Args[1:]
 

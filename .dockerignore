@@ -6,8 +6,6 @@
 data
 tmp
 docs
-gateway
-delivery
 bin
 Procfile.dev
 justfile

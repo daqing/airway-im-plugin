@@ -4,9 +4,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/daqing/airway-im-plugin/app/api/internal_api"
-	"github.com/daqing/airway-im-plugin/backend/app/api/health_api"
-	"github.com/daqing/airway-im-plugin/backend/app/api/home_api"
-	"github.com/daqing/airway-im-plugin/backend/app/api/storage_api"
+	"github.com/daqing/airway-im-plugin/deps/backend/app/api/health_api"
+	"github.com/daqing/airway-im-plugin/deps/backend/app/api/home_api"
+	"github.com/daqing/airway-im-plugin/deps/backend/app/api/storage_api"
 	"github.com/daqing/airway/lib/plugin"
 
 	// Register the IM plugin so MountAll below mounts its routes.
