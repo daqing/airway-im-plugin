@@ -1,20 +1,25 @@
 package models
 
-import (
-	"reflect"
-	"testing"
-)
+import "testing"
 
-func TestREPLNamespaceIncludesUser(t *testing.T) {
-	namespace := REPLNamespace()
+func TestREPLModelsIncludesUser(t *testing.T) {
+	models := REPLModels()
 
-	modelType, ok := namespace["User"]
+	model, ok := models["User"]
 	if !ok {
-		t.Fatalf("expected User in REPL namespace, got %#v", namespace)
+		t.Fatalf("expected User in REPL models, got %#v", models)
 	}
 
-	if modelType != reflect.TypeOf(User{}) {
-		t.Fatalf("expected User type %v, got %v", reflect.TypeOf(User{}), modelType)
+	if model != (User{}) {
+		t.Fatalf("expected zero User, got %#v", model)
+	}
+}
+
+func TestREPLModelsReturnsACopy(t *testing.T) {
+	models := REPLModels()
+	delete(models, "User")
+	if _, ok := REPLModels()["User"]; !ok {
+		t.Fatal("mutating the returned map must not affect the registry")
 	}
 }
 

@@ -8,16 +8,16 @@ import "time"
 // carries different values. UUID is the stable identity; username is the
 // current display name.
 type User struct {
-	ID         int64      `db:"id" json:"id"`
-	UUID       string     `db:"uuid" json:"uuid"`
-	Username   string     `db:"username" json:"username"`
-	Nickname   *string    `db:"nickname" json:"nickname"`
-	AvatarURL  *string    `db:"avatar_url" json:"avatar_url"`
+	ID           int64      `db:"id" json:"id"`
+	UUID         string     `db:"uuid" json:"uuid"`
+	Username     string     `db:"username" json:"username"`
+	Nickname     *string    `db:"nickname" json:"nickname"`
+	AvatarURL    *string    `db:"avatar_url" json:"avatar_url"`
 	Email        *string    `db:"email" json:"email"`
 	LastSeenAt   *time.Time `db:"last_seen_at" json:"last_seen_at"`
 	TokenVersion int64      `db:"token_version" json:"-"`
 	CreatedAt    time.Time  `db:"created_at" json:"created_at"`
-	UpdatedAt  time.Time  `db:"updated_at" json:"updated_at"`
+	UpdatedAt    time.Time  `db:"updated_at" json:"updated_at"`
 }
 
 func (User) TableName() string { return "users" }

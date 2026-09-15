@@ -2,7 +2,7 @@ package internal_api
 
 import "github.com/gin-gonic/gin"
 
-func Routes(r *gin.Engine) {
+func Routes(r *gin.RouterGroup) {
 	group := r.Group("/internal/v1")
 	group.GET("/auth", Authenticate)
 	group.POST("/credentials", IssueCredential)

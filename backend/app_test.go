@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	implugin "github.com/daqing/airway-im-plugin"
 )
 
 type recordingHandler struct {
@@ -100,12 +102,12 @@ func TestCORSAnswersPreflight(t *testing.T) {
 	}
 }
 
-func TestVersionStringMatchesVERSIONFile(t *testing.T) {
-	contents, err := os.ReadFile("VERSION")
+func TestVersionMatchesVERSIONFile(t *testing.T) {
+	contents, err := os.ReadFile("../VERSION")
 	if err != nil {
 		t.Fatalf("read VERSION: %v", err)
 	}
-	if got, want := versionString(), strings.TrimSpace(string(contents)); got != want {
-		t.Fatalf("versionString() = %q, want %q", got, want)
+	if got, want := implugin.Version(), strings.TrimSpace(string(contents)); got != want {
+		t.Fatalf("Version() = %q, want %q", got, want)
 	}
 }

@@ -1,6 +1,6 @@
 # airway-im-plugin（中文文档）
 
-一个 [Airway](https://github.com/daqing/airway) 应用，将完整的 IM 聊天后台打包为插件：宿主签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。
+一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：宿主签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。仓库同时在 [`backend/`](../backend/) 提供了一个启用本插件的可独立运行宿主应用，可以单独起整套服务。
 
 IM 实现移植自 KongChat 产品代码库，并适配到当前版本的 Airway 框架。参考项目特有的
 GitHub OAuth 登录被有意去掉 —— 它是产品专属逻辑，与 IM 核心无关 —— 插件改为通过
@@ -114,20 +114,23 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 **Airway 集成**
 
-- `db/migrate` 下的 Go DSL 迁移在 init 时注册，通过项目二进制自身的 CLI
-  执行；借助框架的 schema 编译器支持 SQLite、MySQL 与 PostgreSQL。
-- 与任何 Airway 应用一样，REPL 模型（`User`）与文件存储 API 可用。
+- `db/migrate` 下的 Go DSL 迁移在插件被启用时随 init 注册，通过宿主二进制
+  自身的 `db:migrate` 执行；借助框架的 schema 编译器支持 SQLite、MySQL 与
+  PostgreSQL。
+- REPL 模型（`User`）通过插件契约暴露给宿主 REPL；文件存储 API 与任何
+  Airway 应用一样可用。
 
 ## 仓库结构
 
 | 路径 | 角色 | 默认端口 |
 | --- | --- | --- |
-| 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | backend API 服务：IM API、管理 API、内部 API、迁移 | 1905 |
+| 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API、内部 API、迁移、REPL 模型 | — |
+| [`backend/`](../backend/) | 独立可运行宿主应用（package main），通过 blank import 启用插件：落地页、健康检查、存储 API | 1905 |
 | [`gateway/`](../gateway/) | 独立 Go module：WebSocket 网关 | 1910 |
 | [`delivery/`](../delivery/) | 独立 Go module：事务性 outbox 投递器 | 1920 |
 | [`docs/`](.) | 设计文档、API 指南、OpenAPI 契约、中文文档 | — |
 
-backend 关键包：
+插件关键包：
 
 | 包 | 内容 |
 | --- | --- |
@@ -146,15 +149,34 @@ backend 关键包：
 环境要求：Go 1.26+，本地 SQLite（文件或 `:memory:`）或 MySQL/PostgreSQL
 服务。可选：`overmind` + `tmux`（用于 `just dev`）、Docker（用于 compose）。
 
+### 作为插件使用
+
+在任意 Airway 宿主应用中启用本插件 —— 用宿主的安装命令，或手动添加：
+
 ```bash
-cp .env.example .env    # 然后编辑 DSN、IM_AUTH_SECRET、IM_INTERNAL_SECRET、IM_ADMIN_PASSWORD…
-go run . db:create      # 创建数据库（驱动支持时）
-go run . db:migrate     # 应用 IM 迁移
-go run .                # 启动 backend，监听 :1905（或：`airway server`）
+go run . plugin:install github.com/daqing/airway-im-plugin   # 在宿主应用中执行
 ```
 
-IM 迁移是 `db/migrate/` 下的 Go DSL 变更，在 init 时注册，因此必须通过
-**本项目二进制**执行（`go run . db:migrate`），独立的 `airway` CLI 看不到它们。
+本地目录安装可改用指向本仓库的 `replace` 指令。启用即向宿主的
+`plugins.go` 添加 blank import `_ "github.com/daqing/airway-im-plugin"`；
+import 时插件注册其路由（`/api/v1/...`、`/admin/api`、`/internal/v1`）、
+Go DSL 迁移和 `User` REPL 模型。然后执行宿主的 `db:migrate` 创建 IM 表，
+并在宿主环境中设置 `IM_AUTH_SECRET`（实时链路还需 `IM_INTERNAL_SECRET`）。
+
+### 独立运行
+
+`backend/` 目录是一个可运行的宿主应用（落地页、健康检查、存储 API），
+通过 blank import 启用了 IM 插件：
+
+```bash
+cp .env.example .env          # 然后编辑 DSN、IM_AUTH_SECRET、IM_INTERNAL_SECRET、IM_ADMIN_PASSWORD…
+go run ./backend db:create    # 创建数据库（驱动支持时）
+go run ./backend db:migrate   # 应用 IM 迁移
+go run ./backend              # 启动 backend，监听 :1905（或：`go run ./backend server`）
+```
+
+IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注册，因此必须通过
+**backend 二进制**执行（`go run ./backend db:migrate`），独立的 `airway` CLI 看不到它们。
 
 本地同时运行三个服务（必须共享同一个 `IM_INTERNAL_SECRET`）：
 
@@ -162,7 +184,7 @@ IM 迁移是 `db/migrate/` 下的 Go DSL 变更，在 init 时注册，因此必
 just dev                                                          # 通过 overmind
 
 # 或手动启动：
-go run .                                                          # backend :1905
+go run ./backend                                                  # backend :1905
 (cd gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)        # gateway :1910
 (cd delivery && BACKEND_URL=http://127.0.0.1:1905 \
                  GATEWAY_URL=http://127.0.0.1:1910 go run .)      # delivery :1920
@@ -293,16 +315,16 @@ HTTP API 一览：
 ## 开发指南
 
 ```bash
-go test ./...        # backend 单元测试（im/admin/me/routes…）
+go test ./...                # 单元测试（im/admin/me/routes…）
 (cd gateway && go vet . && go build .)
 (cd delivery && go vet . && go build .)
-just dev             # 同时运行 backend + gateway + delivery + templ 监听
-just generate        # 编辑 .templ 视图后重新生成 *_templ.go
-go run . repl        # 交互式 REPL（含本项目模型）
-go run . db:rollback # 回滚最近一次迁移
+just dev                     # 同时运行 backend + gateway + delivery + templ 监听
+just generate                # 编辑 .templ 视图后重新生成 *_templ.go
+go run ./backend repl        # 交互式 REPL（含本插件模型）
+go run ./backend db:rollback # 回滚最近一次迁移
 ```
 
-backend 测试覆盖：会话创建（单聊唯一性、成员校验）、消息持久化（幂等、
+测试覆盖：会话创建（单聊唯一性、成员校验）、消息持久化（幂等、
 违规内容屏蔽、outbox 事件）、资料查询、管理端点与路由注册。移植实现
 还做过本地端到端验证：凭证签发 → 建群 → 发消息 → outbox 轮询 →
 网关推送 → WebSocket 收到事件 → outbox 确认。
@@ -322,7 +344,8 @@ IM 业务逻辑是对参考 backend 的忠实移植；以下差异仅源于当�
   轻量 sqlx 门面，使移植的业务代码保持原有查询写法。
 - **ULID 辅助函数。** 该框架版本没有 `utils.NewULID`，现位于 `app/utils`。
 - **迁移。** 保持 Go DSL 形式（IM 表结构与参考一致），但文件名不带数字
-  前缀，避免框架 SQL 优先 CLI 的告警；迁移通过 init 注册，由项目二进制执行。
+  前缀，避免框架 SQL 优先 CLI 的告警；迁移在插件被启用时随 init 注册，
+  由启用它的宿主二进制执行（本仓库的 `backend`）。
 - **命名。** 产品专有的 `KONGCHAT_*` 环境变量改为 `IM_AUTH_SECRET`、
   `IM_INTERNAL_SECRET`、`IM_ADMIN_USERNAME`、`IM_ADMIN_PASSWORD`；内部请求头
   `X-KongChat-Internal-Secret` 改为 `X-IM-Internal-Secret`；

@@ -8,7 +8,7 @@ package home
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "github.com/daqing/airway-im-plugin/app/views/layouts"
+import "github.com/daqing/airway-im-plugin/backend/app/views/layouts"
 
 const repositoryURL = "https://github.com/daqing/airway-im-plugin"
 

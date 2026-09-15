@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daqing/airway-im-plugin/config"
+	"github.com/daqing/airway-im-plugin/backend/config"
 	"github.com/daqing/airway/lib/utils"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"

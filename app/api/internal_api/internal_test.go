@@ -43,7 +43,7 @@ func setupInternalTestRouter(t *testing.T) *gin.Engine {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	Routes(r)
+	Routes(r.Group("/"))
 	return r
 }
 

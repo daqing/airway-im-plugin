@@ -1,10 +1,12 @@
 # airway-im-plugin
 
-An [Airway](https://github.com/daqing/airway) application that packages a
-complete IM chat backend as a plugin: host-signed credential identity, direct
+An [Airway](https://github.com/daqing/airway) plugin that packages a
+complete IM chat backend: host-signed credential identity, direct
 and group conversations, durable messaging with sequence-based
 synchronization, an admin API with content moderation, a WebSocket gateway,
-and a transactional-outbox delivery worker.
+and a transactional-outbox delivery worker. The repository also ships a
+runnable host app under [`backend/`](backend/) that enables the plugin, so
+the whole stack can run standalone.
 
 The IM implementation was ported from the KongChat product codebase and
 adapted to the current Airway framework. The reference project's GitHub OAuth
@@ -132,22 +134,23 @@ Design contracts:
 
 **Airway integration**
 
-- Go DSL migrations under `db/migrate` register on init and run through the
-  project binary's own CLI; SQLite, MySQL, and PostgreSQL are supported via
-  the framework's schema compiler.
-- REPL models (`User`) and the file-storage API are available as in any
-  Airway app.
+- Go DSL migrations under `db/migrate` register on init when the plugin is
+  enabled and run through the host binary's own `db:migrate`; SQLite, MySQL,
+  and PostgreSQL are supported via the framework's schema compiler.
+- REPL models (`User`) are exposed to the host REPL through the plugin
+  contract; the file-storage API is available as in any Airway app.
 
 ## Repository layout
 
 | Path | Role | Default port |
 | --- | --- | --- |
-| repo root (Go module `github.com/daqing/airway-im-plugin`) | Backend API server: IM API, admin API, internal API, migrations | 1905 |
+| repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin (package `implugin`): IM API, admin API, internal API, migrations, REPL models | — |
+| [`backend/`](backend/) | Standalone host app (package main) enabling the plugin: home page, health check, storage API | 1905 |
 | [`gateway/`](gateway/) | Standalone Go module: WebSocket gateway | 1910 |
 | [`delivery/`](delivery/) | Standalone Go module: transactional-outbox publisher | 1920 |
 | [`docs/`](docs/) | Design docs, API guides, OpenAPI contract, 中文文档 | — |
 
-Key backend packages:
+Key plugin packages:
 
 | Package | Contents |
 | --- | --- |
@@ -167,16 +170,38 @@ Requirements: Go 1.26+, and SQLite locally (file or `:memory:`) or a
 MySQL/PostgreSQL server. Optional: `overmind` + `tmux` for `just dev`,
 Docker for the compose stack.
 
+### Using as a plugin
+
+Enable the plugin in any Airway host application — either with the host's
+installer or by hand:
+
 ```bash
-cp .env.example .env    # then edit DSN, IM_AUTH_SECRET, IM_INTERNAL_SECRET, IM_ADMIN_PASSWORD…
-go run . db:create      # create the database (when the driver supports it)
-go run . db:migrate     # apply the IM migrations
-go run .                # start the backend on :1905 (or: `airway server`)
+go run . plugin:install github.com/daqing/airway-im-plugin   # in the host app
+```
+
+A local checkout can be installed with a `replace` directive pointing at this
+directory instead. Enabling adds a blank import
+`_ "github.com/daqing/airway-im-plugin"` to the host's `plugins.go`; on
+import the plugin registers its routes (`/api/v1/...`, `/admin/api`,
+`/internal/v1`), its Go DSL migrations, and the `User` REPL model. Run the
+host's `db:migrate` to create the IM tables, and set `IM_AUTH_SECRET` (plus
+`IM_INTERNAL_SECRET` for the realtime path) in the host's environment.
+
+### Running standalone
+
+The `backend/` directory is a runnable host app (home page, health check,
+storage API) with the IM plugin enabled via blank import:
+
+```bash
+cp .env.example .env          # then edit DSN, IM_AUTH_SECRET, IM_INTERNAL_SECRET, IM_ADMIN_PASSWORD…
+go run ./backend db:create    # create the database (when the driver supports it)
+go run ./backend db:migrate   # apply the IM migrations
+go run ./backend              # start the backend on :1905 (or: `go run ./backend server`)
 ```
 
 The IM migrations are Go DSL changes under `db/migrate/`; they register on
-init and therefore run through **this project's binary** (`go run . db:migrate`),
-not the standalone `airway` CLI.
+init through the plugin package and therefore run through the backend binary
+(`go run ./backend db:migrate`), not the standalone `airway` CLI.
 
 Run all three services locally (they must share `IM_INTERNAL_SECRET`):
 
@@ -184,7 +209,7 @@ Run all three services locally (they must share `IM_INTERNAL_SECRET`):
 just dev                                                          # via overmind
 
 # or by hand:
-go run .                                                          # backend :1905
+go run ./backend                                                  # backend :1905
 (cd gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)        # gateway :1910
 (cd delivery && BACKEND_URL=http://127.0.0.1:1905 \
                  GATEWAY_URL=http://127.0.0.1:1910 go run .)      # delivery :1920
@@ -323,16 +348,16 @@ Endpoint guides: [`docs/api/messages.md`](docs/api/messages.md),
 ## Development
 
 ```bash
-go test ./...        # backend unit tests (im/admin/me/routes…)
+go test ./...                # unit tests (im/admin/me/routes…)
 (cd gateway && go vet . && go build .)
 (cd delivery && go vet . && go build .)
-just dev             # run backend + gateway + delivery + templ watch
-just generate        # regenerate *_templ.go after editing .templ views
-go run . repl        # interactive REPL with this project's models
-go run . db:rollback # roll back the last migration
+just dev                     # run backend + gateway + delivery + templ watch
+just generate                # regenerate *_templ.go after editing .templ views
+go run ./backend repl        # interactive REPL with this project's models
+go run ./backend db:rollback # roll back the last migration
 ```
 
-The backend test suite covers conversation creation (direct uniqueness,
+The test suite covers conversation creation (direct uniqueness,
 member validation), message persistence (idempotency, moderation masking,
 outbox emission), profile lookup, admin endpoints, and route registration.
 The ported implementation was additionally verified end-to-end locally:
@@ -359,8 +384,8 @@ packaging required adaptation:
   it now lives in `app/utils`.
 - **Migrations.** Kept as Go DSL changes (same IM schema as the reference),
   but files are named without a numeric prefix so the framework's SQL-first
-  CLI does not warn; they register via init and run through the project
-  binary.
+  CLI does not warn; they register via init when the plugin is enabled and run
+  through the enabling host binary (this repo's `backend`).
 - **Naming.** Product-specific `KONGCHAT_*` environment variables became
   `IM_AUTH_SECRET`, `IM_INTERNAL_SECRET`, `IM_ADMIN_USERNAME`,
   `IM_ADMIN_PASSWORD`; the internal header `X-KongChat-Internal-Secret`

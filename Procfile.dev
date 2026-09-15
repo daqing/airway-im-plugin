@@ -1,4 +1,4 @@
 web: AIRWAY_ENV=local air
 gateway: cd gateway && go run .
 delivery: cd delivery && go run .
-templ: go tool templ generate -watch
+templ: cd backend && go tool templ generate -watch

@@ -1,22 +1,15 @@
-package main
+package implugin
 
 import (
 	_ "embed"
-	"fmt"
 	"strings"
 )
 
-// version is read from the VERSION file at the project root and compiled
-// into the binary, so `--version` works without any project files around.
+// version is read from the VERSION file at the module root and compiled into
+// the binary.
 //
 //go:embed VERSION
 var version string
 
-// printVersion prints the VERSION file contents exactly as-is.
-func printVersion() {
-	fmt.Print(version)
-}
-
-func versionString() string {
-	return strings.TrimSpace(version)
-}
+// Version returns the plugin module version.
+func Version() string { return strings.TrimSpace(version) }

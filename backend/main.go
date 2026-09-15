@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 
@@ -14,15 +15,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
-	// The IM data model registers its Go DSL migrations on init, so the
-	// binary's `db:migrate` and `db:rollback` commands can see them.
-	_ "github.com/daqing/airway-im-plugin/db/migrate"
+	implugin "github.com/daqing/airway-im-plugin"
 )
 
 // The project binary starts the HTTP server by default (or via `server`).
 // Any other argument is dispatched to the Airway CLI compiled into this
 // binary, so project-local code (REPL models, plugins, Go DSL migrations
-// imported below) is visible to commands like `go run . repl`.
+// registered by the IM plugin) is visible to commands like
+// `go run ./backend repl`.
 func main() {
 	args := os.Args[1:]
 
@@ -38,7 +38,7 @@ func main() {
 		return
 	}
 
-	cmd.Version = versionString()
+	cmd.Version = implugin.Version()
 	loadCLIEnv()
 	cmd.Run(args)
 }
@@ -99,4 +99,8 @@ func loadCLIEnv() {
 func runApp() {
 	app := NewApp("Airway", utils.GetEnvOr("AIRWAY_PORT", "PORT"))
 	app.Run()
+}
+
+func printVersion() {
+	fmt.Print(implugin.Version() + "\n")
 }

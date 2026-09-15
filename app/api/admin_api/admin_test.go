@@ -78,7 +78,7 @@ func setupAdminRouter(t *testing.T) *gin.Engine {
 	adminSessions.Unlock()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	Routes(router)
+	Routes(router.Group("/"))
 	return router
 }
 

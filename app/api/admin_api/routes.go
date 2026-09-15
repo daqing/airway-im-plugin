@@ -2,7 +2,7 @@ package admin_api
 
 import "github.com/gin-gonic/gin"
 
-func Routes(r *gin.Engine) {
+func Routes(r *gin.RouterGroup) {
 	group := r.Group("/admin/api")
 	group.POST("/login", Login)
 
