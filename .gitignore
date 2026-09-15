@@ -4,6 +4,8 @@
 # Locally built service binaries
 /gateway/gateway
 /delivery/delivery
+/deps/gateway/gateway
+/deps/delivery/delivery
 
 .env
 .env.local
