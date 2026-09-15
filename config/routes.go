@@ -10,7 +10,7 @@ import (
 	"github.com/daqing/airway-im-plugin/app/api/internal_api"
 	"github.com/daqing/airway-im-plugin/app/api/me_api"
 	"github.com/daqing/airway-im-plugin/app/api/storage_api"
-	"github.com/daqing/airway/lib/engine"
+	"github.com/daqing/airway/lib/plugin"
 )
 
 // Routes registers every route — public and internal — at the root paths. This
@@ -30,7 +30,7 @@ func PublicRoutes(r *gin.Engine) {
 
 	apiGroupRoutes(r)
 
-	engine.MountAll(r)
+	plugin.MountAll(r)
 }
 
 // HealthRoutes registers the routes that stay reachable at the unprefixed
