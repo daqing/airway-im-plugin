@@ -2,10 +2,9 @@
 /tmp
 
 # Locally built service binaries
-/gateway/gateway
-/delivery/delivery
 /deps/gateway/gateway
 /deps/delivery/delivery
+/deps/**/go.mod
 
 .env
 .env.local

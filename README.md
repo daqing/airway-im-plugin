@@ -146,8 +146,8 @@ Design contracts:
 | --- | --- | --- |
 | repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin (package `implugin`): IM API, admin API, internal API, migrations, REPL models | — |
 | [`backend/`](backend/) | Standalone host app (package main) enabling the plugin: home page, health check, storage API | 1905 |
-| [`gateway/`](gateway/) | Standalone Go module: WebSocket gateway | 1910 |
-| [`delivery/`](delivery/) | Standalone Go module: transactional-outbox publisher | 1920 |
+| [`deps/gateway/`](deps/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
+| [`deps/delivery/`](deps/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
 | [`docs/`](docs/) | Design docs, API guides, OpenAPI contract, 中文文档 | — |
 
 Key plugin packages:
@@ -183,7 +183,11 @@ A local checkout can be installed with a `replace` directive pointing at this
 directory instead. Enabling adds a blank import
 `_ "github.com/daqing/airway-im-plugin"` to the host's `plugins.go`; on
 import the plugin registers its routes (`/api/v1/...`, `/admin/api`,
-`/internal/v1`), its Go DSL migrations, and the `User` REPL model. Run the
+`/internal/v1`), its Go DSL migrations, and the `User` REPL model.
+`plugin:install` also copies the plugin's `deps/` tree into the host project
+root — that is how the `gateway/` and `delivery/` companion services arrive
+(their `go.mod.templ` files are installed as `go.mod`; existing files are
+never overwritten). Run the
 host's `db:migrate` to create the IM tables, and set `IM_AUTH_SECRET` (plus
 `IM_INTERNAL_SECRET` for the realtime path) in the host's environment.
 
@@ -203,16 +207,21 @@ The IM migrations are Go DSL changes under `db/migrate/`; they register on
 init through the plugin package and therefore run through the backend binary
 (`go run ./backend db:migrate`), not the standalone `airway` CLI.
 
-Run all three services locally (they must share `IM_INTERNAL_SECRET`):
+Run all three services locally (they must share `IM_INTERNAL_SECRET`). The
+companion services live under `deps/` and ship their module files as
+`go.mod.templ` (Go module zips drop nested `go.mod` files); `just dev`
+materializes the local `go.mod` copies automatically — by hand, run
+`just deps-setup` once first:
 
 ```bash
 just dev                                                          # via overmind
 
 # or by hand:
+just deps-setup                                                   # one-time: deps/*/go.mod.templ -> go.mod
 go run ./backend                                                  # backend :1905
-(cd gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)        # gateway :1910
-(cd delivery && BACKEND_URL=http://127.0.0.1:1905 \
-                 GATEWAY_URL=http://127.0.0.1:1910 go run .)      # delivery :1920
+(cd deps/gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)   # gateway :1910
+(cd deps/delivery && BACKEND_URL=http://127.0.0.1:1905 \
+                     GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
 
 Or bring the whole stack up with Docker Compose (migrations run on boot):
@@ -349,8 +358,8 @@ Endpoint guides: [`docs/api/messages.md`](docs/api/messages.md),
 
 ```bash
 go test ./...                # unit tests (im/admin/me/routes…)
-(cd gateway && go vet . && go build .)
-(cd delivery && go vet . && go build .)
+(cd deps/gateway && go vet . && go build .)
+(cd deps/delivery && go vet . && go build .)
 just dev                     # run backend + gateway + delivery + templ watch
 just generate                # regenerate *_templ.go after editing .templ views
 go run ./backend repl        # interactive REPL with this project's models
@@ -367,7 +376,7 @@ push → WebSocket receipt → outbox ack.
 ## Differences from the reference implementation
 
 The IM logic is a faithful port of the reference backend; the differences
-below exist only where the current Airway framework (v0.7.1) or plugin
+below exist only where the current Airway framework (v0.8.1) or plugin
 packaging required adaptation:
 
 - **Identity without OAuth.** The reference authenticated GitHub users

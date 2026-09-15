@@ -126,8 +126,8 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | --- | --- | --- |
 | 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API、内部 API、迁移、REPL 模型 | — |
 | [`backend/`](../backend/) | 独立可运行宿主应用（package main），通过 blank import 启用插件：落地页、健康检查、存储 API | 1905 |
-| [`gateway/`](../gateway/) | 独立 Go module：WebSocket 网关 | 1910 |
-| [`delivery/`](../delivery/) | 独立 Go module：事务性 outbox 投递器 | 1920 |
+| [`deps/gateway/`](../deps/gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：WebSocket 网关 | 1910 |
+| [`deps/delivery/`](../deps/delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：事务性 outbox 投递器 | 1920 |
 | [`docs/`](.) | 设计文档、API 指南、OpenAPI 契约、中文文档 | — |
 
 插件关键包：
@@ -160,7 +160,10 @@ go run . plugin:install github.com/daqing/airway-im-plugin   # 在宿主应用�
 本地目录安装可改用指向本仓库的 `replace` 指令。启用即向宿主的
 `plugins.go` 添加 blank import `_ "github.com/daqing/airway-im-plugin"`；
 import 时插件注册其路由（`/api/v1/...`、`/admin/api`、`/internal/v1`）、
-Go DSL 迁移和 `User` REPL 模型。然后执行宿主的 `db:migrate` 创建 IM 表，
+Go DSL 迁移和 `User` REPL 模型。`plugin:install` 还会把插件的 `deps/`
+目录原样复制进宿主项目根目录 —— `gateway/` 和 `delivery/` 两个配套服务
+由此到达宿主（`go.mod.templ` 落地为 `go.mod`，已存在的文件不会被覆盖）。
+然后执行宿主的 `db:migrate` 创建 IM 表，
 并在宿主环境中设置 `IM_AUTH_SECRET`（实时链路还需 `IM_INTERNAL_SECRET`）。
 
 ### 独立运行
@@ -178,16 +181,20 @@ go run ./backend              # 启动 backend，监听 :1905（或：`go run ./
 IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注册，因此必须通过
 **backend 二进制**执行（`go run ./backend db:migrate`），独立的 `airway` CLI 看不到它们。
 
-本地同时运行三个服务（必须共享同一个 `IM_INTERNAL_SECRET`）：
+本地同时运行三个服务（必须共享同一个 `IM_INTERNAL_SECRET`）。配套服务位于
+`deps/` 下，其模块文件以 `go.mod.templ` 形式随插件分发（Go module zip 会丢弃嵌套的
+`go.mod`）；`just dev` 会自动生成本地 `go.mod` 副本，手动启动则先执行一次
+`just deps-setup`：
 
 ```bash
 just dev                                                          # 通过 overmind
 
 # 或手动启动：
+just deps-setup                                                   # 一次性：deps/*/go.mod.templ -> go.mod
 go run ./backend                                                  # backend :1905
-(cd gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)        # gateway :1910
-(cd delivery && BACKEND_URL=http://127.0.0.1:1905 \
-                 GATEWAY_URL=http://127.0.0.1:1910 go run .)      # delivery :1920
+(cd deps/gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)   # gateway :1910
+(cd deps/delivery && BACKEND_URL=http://127.0.0.1:1905 \
+                     GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
 
 或用 Docker Compose 一键起整套服务（启动时自动迁移）：
@@ -316,8 +323,8 @@ HTTP API 一览：
 
 ```bash
 go test ./...                # 单元测试（im/admin/me/routes…）
-(cd gateway && go vet . && go build .)
-(cd delivery && go vet . && go build .)
+(cd deps/gateway && go vet . && go build .)
+(cd deps/delivery && go vet . && go build .)
 just dev                     # 同时运行 backend + gateway + delivery + templ 监听
 just generate                # 编辑 .templ 视图后重新生成 *_templ.go
 go run ./backend repl        # 交互式 REPL（含本插件模型）
@@ -332,7 +339,7 @@ go run ./backend db:rollback # 回滚最近一次迁移
 ## 与参考实现的差异
 
 IM 业务逻辑是对参考 backend 的忠实移植；以下差异仅源于当前 Airway 框架
-（v0.7.1）或插件化打包的需要：
+（v0.8.1）或插件化打包的需要：
 
 - **去掉 OAuth 的身份模型。** 参考项目通过 GitHub OAuth 流程和
   `github_users` 表认证 GitHub 用户。两者都作为产品专属逻辑被移除：插件

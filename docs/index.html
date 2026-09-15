@@ -420,7 +420,9 @@ footer .container { display: flex; justify-content: space-between; gap: 20px; fl
 go run . plugin:install github.com/daqing/airway-im-plugin</pre>
         <p style="margin-top:12px">启用即在宿主的 <code>plugins.go</code> 中加入 blank import，插件自动注册
           <code>/api/v1/...</code>、<code>/admin/api</code>、<code>/internal/v1</code> 路由、Go DSL 迁移和
-          <code>User</code> REPL 模型。随后在宿主环境设置 <code>IM_AUTH_SECRET</code>
+          <code>User</code> REPL 模型；同时把插件 <code>deps/</code> 目录下的 gateway、delivery
+          两个配套服务复制进宿主项目根目录（<code>go.mod.templ</code> 落地为 <code>go.mod</code>，已存在的文件不会覆盖）。
+          随后在宿主环境设置 <code>IM_AUTH_SECRET</code>
           （实时链路再加 <code>IM_INTERNAL_SECRET</code>），并执行宿主自己的 <code>db:migrate</code> 建表。</p>
       </div>
       <div class="card">
@@ -433,9 +435,10 @@ go run ./backend db:create
 go run ./backend db:migrate
 
 <span class="c"># 3. 启动三个服务（共享 IM_INTERNAL_SECRET）</span>
-go run ./backend                  <span class="c"># backend  :1905</span>
-(cd gateway  &amp;&amp; go run .)       <span class="c"># gateway  :1910</span>
-(cd delivery &amp;&amp; go run .)       <span class="c"># delivery :1920</span></pre>
+<span class="c">#    gateway/delivery 在 deps/ 下，先 just deps-setup 生成本地 go.mod</span>
+go run ./backend                        <span class="c"># backend  :1905</span>
+(cd deps/gateway  &amp;&amp; go run .)        <span class="c"># gateway  :1910</span>
+(cd deps/delivery &amp;&amp; go run .)        <span class="c"># delivery :1920</span></pre>
       </div>
       <div class="card">
         <h3>Docker Compose（推荐）</h3>
