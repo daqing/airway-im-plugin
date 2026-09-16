@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daqing/airway-im-plugin/app/auth"
-	"github.com/daqing/airway-im-plugin/app/repo"
+	"github.com/daqing/airway-im-plugin/deps/im/app/auth"
+	"github.com/daqing/airway-im-plugin/deps/im/app/repo"
 	"github.com/gin-gonic/gin"
 )
 

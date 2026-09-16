@@ -24,8 +24,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daqing/airway-im-plugin/app/models"
-	"github.com/daqing/airway-im-plugin/app/repo"
+	"github.com/daqing/airway-im-plugin/deps/im/app/models"
+	"github.com/daqing/airway-im-plugin/deps/im/app/repo"
 )
 
 const (

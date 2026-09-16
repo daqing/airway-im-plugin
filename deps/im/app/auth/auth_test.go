@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daqing/airway-im-plugin/app/repo"
+	"github.com/daqing/airway-im-plugin/deps/im/app/repo"
 )
 
 const testSecret = "unit-test-signing-secret"

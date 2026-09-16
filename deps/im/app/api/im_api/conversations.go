@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daqing/airway-im-plugin/app/repo"
-	"github.com/daqing/airway-im-plugin/app/utils"
+	"github.com/daqing/airway-im-plugin/deps/im/app/repo"
+	"github.com/daqing/airway-im-plugin/deps/im/app/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )

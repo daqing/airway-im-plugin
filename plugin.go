@@ -7,16 +7,16 @@ import (
 	"github.com/daqing/airway/lib/plugin"
 	"github.com/gin-gonic/gin"
 
-	"github.com/daqing/airway-im-plugin/app/api/admin_api"
-	"github.com/daqing/airway-im-plugin/app/api/im_api"
-	"github.com/daqing/airway-im-plugin/app/api/internal_api"
-	"github.com/daqing/airway-im-plugin/app/api/me_api"
-	"github.com/daqing/airway-im-plugin/app/models"
+	"github.com/daqing/airway-im-plugin/deps/im/app/api/admin_api"
+	"github.com/daqing/airway-im-plugin/deps/im/app/api/im_api"
+	"github.com/daqing/airway-im-plugin/deps/im/app/api/internal_api"
+	"github.com/daqing/airway-im-plugin/deps/im/app/api/me_api"
+	"github.com/daqing/airway-im-plugin/deps/im/app/models"
 
 	// The IM data model's Go DSL migrations self-register on import, so a
 	// host's db:migrate / db:rollback see them as soon as the plugin is
 	// enabled.
-	_ "github.com/daqing/airway-im-plugin/db/migrate"
+	_ "github.com/daqing/airway-im-plugin/deps/im/db/migrate"
 )
 
 // Plugin is the IM feature module.

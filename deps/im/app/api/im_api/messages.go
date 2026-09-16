@@ -12,9 +12,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/daqing/airway-im-plugin/app/models"
-	"github.com/daqing/airway-im-plugin/app/repo"
-	"github.com/daqing/airway-im-plugin/app/utils"
+	"github.com/daqing/airway-im-plugin/deps/im/app/models"
+	"github.com/daqing/airway-im-plugin/deps/im/app/repo"
+	"github.com/daqing/airway-im-plugin/deps/im/app/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )

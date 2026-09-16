@@ -1,0 +1,97 @@
+name: airway-im
+
+x-internal-environment: &internal-environment
+  IM_INTERNAL_SECRET: ${IM_INTERNAL_SECRET:-airway-im-local-development-secret}
+  TZ: ${TZ:-Asia/Shanghai}
+  NO_PROXY: backend,gateway,delivery,127.0.0.1,localhost
+  no_proxy: backend,gateway,delivery,127.0.0.1,localhost
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    image: airway-im-backend:local
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/app/app db:migrate && exec /app/app"]
+    environment:
+      <<: *internal-environment
+      AIRWAY_ENV: production
+      PORT: "1905"
+      DSN: sqlite:///data/airway-im.db
+      STORAGE_DRIVER: local
+      STORAGE_ROOT: /data/storage
+      IM_ADMIN_USERNAME: ${IM_ADMIN_USERNAME:-admin}
+      IM_ADMIN_PASSWORD: ${IM_ADMIN_PASSWORD:-airway-im-local-admin-password}
+      IM_AUTH_SECRET: ${IM_AUTH_SECRET:-airway-im-local-development-auth-secret}
+      ADMIN_GATEWAY_METRICS_URL: http://gateway:1910/metrics
+      ADMIN_DELIVERY_METRICS_URL: http://delivery:1920/metrics
+    ports:
+      - "${BACKEND_PORT:-1905}:1905"
+    volumes:
+      - backend-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:1905/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ./deps/gateway
+      dockerfile: Containerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    image: airway-im-gateway:local
+    environment:
+      <<: *internal-environment
+      GATEWAY_ADDR: :1910
+      BACKEND_URL: http://backend:1905
+      GATEWAY_ALLOWED_ORIGINS: ${GATEWAY_ALLOWED_ORIGINS:-}
+    ports:
+      - "${GATEWAY_PORT:-1910}:1910"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:1910/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    restart: unless-stopped
+
+  delivery:
+    build:
+      context: ./deps/delivery
+      dockerfile: Containerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    image: airway-im-delivery:local
+    environment:
+      <<: *internal-environment
+      DELIVERY_ADDR: :1920
+      BACKEND_URL: http://backend:1905
+      GATEWAY_URL: http://gateway:1910
+      DELIVERY_POLL_INTERVAL_MS: ${DELIVERY_POLL_INTERVAL_MS:-500}
+    ports:
+      - "${DELIVERY_PORT:-1920}:1920"
+    depends_on:
+      backend:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:1920/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+    restart: unless-stopped
+
+volumes:
+  backend-data:
