@@ -18,3 +18,5 @@
 *.sock
 
 schema.json
+
+node_modules/

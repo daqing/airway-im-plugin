@@ -1,0 +1,19 @@
+{
+  "name": "airway-im-client-demo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TypeScript WebSocket client demo for the Airway IM plugin: multi-user group chat TUI",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "chat": "node src/main.ts",
+    "demo": "node src/demo.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
