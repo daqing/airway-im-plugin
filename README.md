@@ -8,13 +8,9 @@ and a transactional-outbox delivery worker. The companion WebSocket gateway
 and delivery services ship under [`deps/`](deps/), so the whole stack can run
 standalone from any Airway host app that enables the plugin.
 
-The IM implementation was ported from the KongChat product codebase and
-adapted to the current Airway framework. The reference project's GitHub OAuth
-login was deliberately left out — it is product-specific and unrelated to the
-IM core — so the plugin authenticates users through host-signed HMAC
-credentials: the host application signs its `(name, uuid)` identity pair, and
-the plugin verifies it statelessly (see
-[Differences from the reference implementation](#differences-from-the-reference-implementation)).
+The plugin authenticates users through host-signed HMAC credentials: the host
+application signs its `(name, uuid)` identity pair, and the plugin verifies
+it statelessly.
 A Chinese version of this document is available at
 [`docs/README.zh-cn.md`](docs/README.zh-cn.md).
 
@@ -29,23 +25,20 @@ A Chinese version of this document is available at
 - [Connecting over WebSocket](#connecting-over-websocket)
 - [Configuration reference](#configuration-reference)
 - [Development](#development)
-- [Differences from the reference implementation](#differences-from-the-reference-implementation)
 
 ## Architecture
 
-The plugin follows a three-service layout — backend / gateway / delivery —
-mirroring the reference project:
+The plugin follows a three-service layout — backend / gateway / delivery:
 
 ```text
                     HTTPS (REST)                     WebSocket
   Clients ───────────────────────────────► backend :1905
-     │                                        │    ▲
-     │  ws://gateway:1910/ws                  │    │ 4. poll outbox,
-     ▼                                        │    │    push, ack
-  gateway :1910 ◄───── 3. deliver command ── delivery :1920
-     ▲                                        │
-     └──────────── 2. outbox event ───────────┘
-                 (written in the same transaction as the message)
+     │                                        ▲
+     │  ws://gateway:1910/ws                  │ 2. poll outbox
+     ▼                                        │    (events written in step 1's
+  gateway :1910 ◄───── 3. deliver + ack ── delivery :1920   transaction)
+     │
+     └─ 4. fan out to connected recipients
 ```
 
 1. A client sends a message over HTTPS. The backend validates membership,
@@ -134,7 +127,8 @@ Design contracts:
 
 **Observability**
 
-- Prometheus-style `/metrics` plus an auto-refreshing `/dashboard` HTML page
+- Prometheus-style `/metrics` (prefixes `airway_im_gateway_*` /
+  `airway_im_delivery_*`) plus an auto-refreshing `/dashboard` HTML page
   on both the gateway and the delivery worker.
 - The backend admin status endpoint aggregates all three services.
 
@@ -374,41 +368,7 @@ just deps-setup              # one-time: deps/*/go.mod.templ -> go.mod
 The test suite covers conversation creation (direct uniqueness,
 member validation), message persistence (idempotency, moderation masking,
 outbox emission), profile lookup, admin endpoints, and route registration.
-The ported implementation was additionally verified end-to-end locally:
+The full stack was additionally verified end-to-end locally:
 credential minting → group creation → message send → outbox poll → gateway
 push → WebSocket receipt → outbox ack.
 
-## Differences from the reference implementation
-
-The IM logic is a faithful port of the reference backend; the differences
-below exist only where the current Airway framework (v0.8.1) or plugin
-packaging required adaptation:
-
-- **Identity without OAuth.** The reference authenticated GitHub users
-  through a GitHub OAuth flow and a `github_users` table. Both were removed
-  as product-specific: the plugin keeps a generic `users` table (uuid,
-  username, display fields) and authenticates via host-signed HMAC
-  credentials, auto-registering users on first sight. Everything else —
-  per-conversation authorization, the wire protocol — is unchanged.
-- **Database access layer.** The reference carried an older Airway fork with
-  an sqlx-based repo layer. This plugin uses upstream Airway (plain
-  `database/sql`) plus a small sqlx facade in `app/repo`, so the ported
-  business code keeps its original query style.
-- **ULID helper.** `utils.NewULID` did not exist in the framework version;
-  it now lives in `app/utils`.
-- **Migrations.** Kept as Go DSL changes (same IM schema as the reference),
-  but files are named without a numeric prefix so the framework's SQL-first
-  CLI does not warn; they register via init when the plugin is enabled and run
-  through the enabling host binary.
-- **Naming.** Product-specific `KONGCHAT_*` environment variables became
-  `IM_AUTH_SECRET`, `IM_INTERNAL_SECRET`, `IM_ADMIN_USERNAME`,
-  `IM_ADMIN_PASSWORD`; the internal header `X-KongChat-Internal-Secret`
-  became `X-IM-Internal-Secret`; gateway/delivery metric prefixes are
-  `airway_im_gateway_*` / `airway_im_delivery_*`. The client-facing wire
-  protocol is unchanged.
-- **URL prefix support.** The internal service-to-service API is also mounted
-  on the unprefixed internal router, so gateway/delivery reach the backend
-  even when the public routes are served under a `URL_PREFIX`.
-- **Removed scaffold.** The plugin's original demo WebSocket broadcast
-  (`app/websocket`, `/ws` prototype) was removed; the standalone gateway
-  service is the real-time channel.

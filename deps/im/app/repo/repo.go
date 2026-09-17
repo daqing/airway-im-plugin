@@ -1,5 +1,5 @@
 // Package repo is a thin sqlx facade over the framework's database/sql
-// connection. The IM code ported from the reference backend speaks sqlx
+// connection. The IM code speaks sqlx
 // (Get/Select/StructScan/Rebind and transactional helpers); this package
 // exposes exactly that API on top of lib/repo, which owns the connection
 // pool, driver detection, and DSN normalization.

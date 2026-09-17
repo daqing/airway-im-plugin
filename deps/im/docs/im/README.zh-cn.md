@@ -2,11 +2,8 @@
 
 一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：宿主签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。配套的 gateway 与 delivery 服务随插件一起在 [`deps/`](../deps/) 下分发，在任何启用本插件的 Airway 宿主应用中即可独立跑起整套服务。
 
-IM 实现移植自 KongChat 产品代码库，并适配到当前版本的 Airway 框架。参考项目特有的
-GitHub OAuth 登录被有意去掉 —— 它是产品专属逻辑，与 IM 核心无关 —— 插件改为通过
-宿主签名的 HMAC 凭证认证用户：宿主应用对自己的 `(name, uuid)` 身份二元组签名，插件
-无状态验签（差异见[与参考实现的差异](#与参考实现的差异)）。英文版文档位于仓库根目录的
-[`README.md`](../README.md)。
+插件通过宿主签名的 HMAC 凭证认证用户：宿主应用对自己的 `(name, uuid)` 身份二元组
+签名，插件无状态验签。英文版文档位于仓库根目录的 [`README.md`](../README.md)。
 
 ## 目录
 
@@ -19,22 +16,20 @@ GitHub OAuth 登录被有意去掉 —— 它是产品专属逻辑，与 IM 核�
 - [建立 WebSocket 连接](#建立-websocket-连接)
 - [配置项参考](#配置项参考)
 - [开发指南](#开发指南)
-- [与参考实现的差异](#与参考实现的差异)
 
 ## 架构
 
-插件采用与参考项目一致的三服务形式 —— backend / gateway / delivery：
+插件采用三服务形式 —— backend / gateway / delivery：
 
 ```text
                     HTTPS (REST)                     WebSocket
   客户端 ───────────────────────────────► backend :1905
-     │                                        │    ▲
-     │  ws://gateway:1910/ws                  │    │ 4. 轮询 outbox、
-     ▼                                        │    │    推送、确认
-  gateway :1910 ◄───── 3. 投递命令 ──────── delivery :1920
-     ▲                                        │
-     └──────────── 2. outbox 事件 ───────────┘
-                 （与消息在同一个事务中写入）
+     │                                        ▲
+     │  ws://gateway:1910/ws                  │ 2. 轮询 outbox
+     ▼                                        │    （事件在第 1 步的
+  gateway :1910 ◄──── 3. 投递 + 确认 ──── delivery :1920   事务中写入）
+     │
+     └─ 4. 扇出给在线接收者
 ```
 
 1. 客户端通过 HTTPS 发送消息。backend 校验成员资格、分配会话 `sequence`、
@@ -113,7 +108,8 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 **可观测性**
 
-- gateway 与 delivery 均提供 Prometheus 风格的 `/metrics` 和自动刷新的
+- gateway 与 delivery 均提供 Prometheus 风格的 `/metrics`（指标前缀
+  `airway_im_gateway_*` / `airway_im_delivery_*`）和自动刷新的
   `/dashboard` HTML 页面。
 - backend 的管理状态端点聚合三个服务的状态。
 
@@ -333,34 +329,7 @@ just deps-setup              # 一次性：deps/*/go.mod.templ -> go.mod
 ```
 
 测试覆盖：会话创建（单聊唯一性、成员校验）、消息持久化（幂等、
-违规内容屏蔽、outbox 事件）、资料查询、管理端点与路由注册。移植实现
+违规内容屏蔽、outbox 事件）、资料查询、管理端点与路由注册。整套服务
 还做过本地端到端验证：凭证签发 → 建群 → 发消息 → outbox 轮询 →
 网关推送 → WebSocket 收到事件 → outbox 确认。
 
-## 与参考实现的差异
-
-IM 业务逻辑是对参考 backend 的忠实移植；以下差异仅源于当前 Airway 框架
-（v0.8.1）或插件化打包的需要：
-
-- **去掉 OAuth 的身份模型。** 参考项目通过 GitHub OAuth 流程和
-  `github_users` 表认证 GitHub 用户。两者都作为产品专属逻辑被移除：插件
-  保留一张通用 `users` 表（uuid、用户名、展示字段），通过宿主签名的
-  HMAC 凭证认证，并在首次认证时自动注册用户。其余部分 —— 会话级授权、
-  通信协议 —— 与参考完全一致。
-- **数据访问层。** 参考项目携带的是老版 Airway 分支（基于 sqlx 的 repo
-  层）。本插件使用上游 Airway（纯 `database/sql`）并在 `app/repo` 增加了
-  轻量 sqlx 门面，使移植的业务代码保持原有查询写法。
-- **ULID 辅助函数。** 该框架版本没有 `utils.NewULID`，现位于 `app/utils`。
-- **迁移。** 保持 Go DSL 形式（IM 表结构与参考一致），但文件名不带数字
-  前缀，避免框架 SQL 优先 CLI 的告警；迁移在插件被启用时随 init 注册，
-  由启用它的宿主二进制执行。
-- **命名。** 产品专有的 `KONGCHAT_*` 环境变量改为 `IM_AUTH_SECRET`、
-  `IM_INTERNAL_SECRET`、`IM_ADMIN_USERNAME`、`IM_ADMIN_PASSWORD`；内部请求头
-  `X-KongChat-Internal-Secret` 改为 `X-IM-Internal-Secret`；
-  gateway/delivery 指标前缀为 `airway_im_gateway_*` / `airway_im_delivery_*`。
-  客户端可见的通信协议保持不变。
-- **URL 前缀支持。** 服务间内部 API 同时挂载在无前缀的 internal 路由上，
-  因此即使公共路由运行在 `URL_PREFIX` 之下，gateway/delivery 仍可直达
-  backend。
-- **移除脚手架。** 插件原有的 demo WebSocket 广播（`app/websocket`、
-  `/ws` 原型）已删除；独立部署的 gateway 服务才是真正的实时通道。
