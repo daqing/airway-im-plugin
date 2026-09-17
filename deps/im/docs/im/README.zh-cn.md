@@ -146,7 +146,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | `app/models` | `User` 模型与 REPL 注册 |
 | `app/repo` | 框架 `database/sql` 连接池之上的轻量 sqlx 门面 |
 | `app/utils` | 会话/消息/事件 ID 使用的 ULID 生成器 |
-| `db/migrate` | 表结构迁移（用户、会话、成员、消息、幂等、outbox、审核） |
+| `host/db/migrate` | 表结构迁移（用户、会话、成员、消息、幂等、outbox、审核） |
 
 ## 安装与启动
 

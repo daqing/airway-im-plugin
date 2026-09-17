@@ -15,7 +15,7 @@ import (
 	// The IM data model's Go DSL migrations self-register on import, so a
 	// host's db:migrate / db:rollback see them as soon as the plugin is
 	// enabled.
-	_ "github.com/daqing/airway-im-plugin/deps/im/db/migrate"
+	_ "github.com/daqing/airway-im-plugin/host/db/migrate"
 )
 
 // Plugin is the IM feature module.

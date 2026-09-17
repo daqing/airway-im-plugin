@@ -167,7 +167,7 @@ Key plugin packages:
 | `app/models` | `User` model + REPL registry |
 | `app/repo` | Thin sqlx facade over the framework's `database/sql` pool |
 | `app/utils` | ULID generator used for conversation/message/event IDs |
-| `db/migrate` | Schema migrations (users, conversations, members, messages, idempotency, outbox, moderation) |
+| `host/db/migrate` | Schema migrations (users, conversations, members, messages, idempotency, outbox, moderation) |
 
 ## Setup
 
