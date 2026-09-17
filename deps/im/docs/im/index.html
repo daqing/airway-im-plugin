@@ -353,7 +353,7 @@ footer .container { display: flex; justify-content: space-between; gap: 20px; fl
         <rect class="box box-accent" x="380" y="40" width="220" height="76" rx="10"></rect>
         <text x="490" y="66" text-anchor="middle" font-size="14.5" font-weight="700">backend :1905</text>
         <text class="sub" x="490" y="86" text-anchor="middle" font-size="11.5">REST API · 会话/消息/审核</text>
-        <text class="sub" x="490" y="102" text-anchor="middle" font-size="11.5">验签 · 用户注册 · outbox</text>
+        <text class="sub" x="490" y="102" text-anchor="middle" font-size="11.5">验签 · 用户注册 · outbox（内部 API 独立监听 127.0.0.1:1906）</text>
 
         <!-- delivery -->
         <rect class="box box-accent" x="380" y="230" width="220" height="60" rx="10"></rect>
@@ -419,8 +419,10 @@ footer .container { display: flex; justify-content: space-between; gap: 20px; fl
         <pre><span class="c"># 在你的 Airway 宿主应用中执行</span>
 go run . plugin:install github.com/daqing/airway-im-plugin</pre>
         <p style="margin-top:12px">启用即在宿主的 <code>plugins.go</code> 中加入 blank import，插件自动注册
-          <code>/api/v1/...</code>、<code>/admin/api</code>、<code>/internal/v1</code> 路由、Go DSL 迁移和
-          <code>User</code> REPL 模型；同时把插件 <code>deps/</code> 目录下的 gateway、delivery
+          <code>/api/v1/...</code>、<code>/admin/api</code> 路由、Go DSL 迁移和
+          <code>User</code> REPL 模型；内部 API（<code>/internal/v1</code>）由插件在宿主启动时单独监听
+          （<code>IM_INTERNAL_ADDR</code>，默认 <code>127.0.0.1:1906</code>），不暴露在公开端口上。
+          同时把插件 <code>deps/</code> 目录下的 gateway、delivery
           复制进宿主项目根目录（<code>go.mod.templ</code> 落地为 <code>go.mod</code>，已存在的文件不会覆盖）。
           随后在宿主环境设置 <code>IM_AUTH_SECRET</code>
           （实时链路再加 <code>IM_INTERNAL_SECRET</code>），并执行宿主自己的 <code>db:migrate</code> 建表。</p>
@@ -513,8 +515,8 @@ go run . server                           <span class="c"># backend  :1905</span
     <span class="k">return</span> <span class="s">"im1."</span> + encoded + <span class="s">"."</span> +
         base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }</pre>
-        <p style="margin-top:12px"><b>方案 B：调 IM 代签接口。</b>宿主不想持有签名密钥时，在自己登录流程里调 server-to-server 端点（凭证默认 24h 过期，且自动带 <code>token_version</code>、支持撤销）：</p>
-        <pre>curl -X POST https://im.example.com/internal/v1/credentials \
+        <p style="margin-top:12px"><b>方案 B：调 IM 代签接口。</b>宿主不想持有签名密钥时，在自己登录流程里调 server-to-server 端点（凭证默认 24h 过期，且自动带 <code>token_version</code>、支持撤销）。该端点在内部 listener（<code>IM_INTERNAL_ADDR</code>，默认 <code>127.0.0.1:1906</code>）上，只对服务端可达：</p>
+        <pre>curl -X POST http://127.0.0.1:1906/internal/v1/credentials \
   -H <span class="s">"X-IM-Internal-Secret: &lt;IM_INTERNAL_SECRET&gt;"</span> \
   -H <span class="s">"Content-Type: application/json"</span> \
   -d <span class="s">'{"uuid":"shop1:user-42","name":"alice","nickname":"Alice","ttl_seconds":86400}'</span>

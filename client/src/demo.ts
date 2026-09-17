@@ -11,13 +11,15 @@
 //
 // Usage: IM_INTERNAL_SECRET=... node src/demo.ts
 // Env: IM_BACKEND_URL (default http://127.0.0.1:1905),
-//      IM_GATEWAY_URL (default ws://127.0.0.1:1910/ws)
+//      IM_GATEWAY_URL (default ws://127.0.0.1:1910/ws),
+//      IM_INTERNAL_URL (default http://127.0.0.1:1906; credential minting)
 
 import { IMClient, IMError, type ChatMessage } from "./api.ts";
 import { GatewayClient, type GatewayEvent } from "./gateway.ts";
 
 const BACKEND = process.env.IM_BACKEND_URL ?? "http://127.0.0.1:1905";
 const GATEWAY = process.env.IM_GATEWAY_URL ?? "ws://127.0.0.1:1910/ws";
+const INTERNAL_API = process.env.IM_INTERNAL_URL ?? "http://127.0.0.1:1906";
 const INTERNAL_SECRET = process.env.IM_INTERNAL_SECRET;
 
 if (!INTERNAL_SECRET) {
@@ -62,7 +64,7 @@ class Participant {
       uuid: `demo-${this.name}`,
       name: this.name,
       nickname: this.name,
-    });
+    }, INTERNAL_API);
     this.id = (await this.client.me()).id;
   }
 

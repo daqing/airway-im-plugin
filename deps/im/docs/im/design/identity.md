@@ -165,8 +165,11 @@ Response:
 - The user is registered (or refreshed) at mint time, and the credential
   carries the user's current `token_version`, making it revocable through
   the admin API (§9).
-- The endpoint lives on the internal API and is protected by
-  `IM_INTERNAL_SECRET`; it must never be reachable by clients.
+- The endpoint lives on the internal API, which the backend serves on its
+  own listener (`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`) — separate
+  from the public HTTP port — and every request must still carry
+  `IM_INTERNAL_SECRET`. Keep the listener off the public network; it must
+  never be reachable by clients.
 
 ## 5. Client usage
 

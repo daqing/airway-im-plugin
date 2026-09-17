@@ -9,7 +9,6 @@ import (
 
 	"github.com/daqing/airway-im-plugin/deps/im/app/api/admin_api"
 	"github.com/daqing/airway-im-plugin/deps/im/app/api/im_api"
-	"github.com/daqing/airway-im-plugin/deps/im/app/api/internal_api"
 	"github.com/daqing/airway-im-plugin/deps/im/app/api/me_api"
 	"github.com/daqing/airway-im-plugin/deps/im/app/models"
 
@@ -25,13 +24,13 @@ type Plugin struct{}
 func (Plugin) Name() string { return "im" }
 
 // MountPath keeps the plugin's existing HTTP surface unchanged: routes are
-// registered at their absolute paths (/admin/api, /internal/v1, /api/v1/...)
-// so gateway/delivery services and clients need no reconfiguration.
+// registered at their absolute paths (/admin/api, /api/v1/...) so clients
+// need no reconfiguration. The internal service-to-service API is not here;
+// it is served by Boot on its own listener (see internal_server.go).
 func (Plugin) MountPath() string { return "/" }
 
 func (Plugin) Routes(r *gin.RouterGroup) {
 	admin_api.Routes(r)
-	internal_api.Routes(r)
 
 	v1 := r.Group("/api/v1")
 	me_api.Routes(v1)

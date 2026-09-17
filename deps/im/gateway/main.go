@@ -118,7 +118,7 @@ func loadConfig() config {
 			origins[value] = struct{}{}
 		}
 	}
-	return config{addr: envOr("GATEWAY_ADDR", ":1910"), backendURL: strings.TrimRight(envOr("BACKEND_URL", "http://127.0.0.1:1905"), "/"), internalSecret: os.Getenv("IM_INTERNAL_SECRET"), allowedOrigins: origins}
+	return config{addr: envOr("GATEWAY_ADDR", ":1910"), backendURL: strings.TrimRight(envOr("BACKEND_URL", "http://127.0.0.1:1906"), "/"), internalSecret: os.Getenv("IM_INTERNAL_SECRET"), allowedOrigins: origins}
 }
 
 func (s *server) websocket(w http.ResponseWriter, r *http.Request) {

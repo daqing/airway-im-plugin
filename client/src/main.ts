@@ -4,6 +4,7 @@
 //   node src/main.ts --name alice [--nickname Alice]
 //     [--conversation <id> | --join "<group title>" | --create-group "Title" --members 2,3]
 //     [--backend http://127.0.0.1:1905] [--gateway ws://127.0.0.1:1910/ws]
+//     [--internal-url http://127.0.0.1:1906]
 //     [--credential im1.... | --internal-secret <secret>]
 //   node src/main.ts groups --name alice   # list my groups and exit
 //   node src/main.ts groups                # list ALL groups (admin API; needs
@@ -30,6 +31,7 @@ interface Args {
   adminPassword?: string;
   backend: string;
   gateway: string;
+  internalUrl: string;
   conversation?: string;
   join?: string;
   createGroup?: string;
@@ -40,6 +42,7 @@ function parseArgs(argv: string[]): Args {
   const args: Args = {
     backend: process.env.IM_BACKEND_URL ?? "http://127.0.0.1:1905",
     gateway: process.env.IM_GATEWAY_URL ?? "ws://127.0.0.1:1910/ws",
+    internalUrl: process.env.IM_INTERNAL_URL ?? "http://127.0.0.1:1906",
     internalSecret: process.env.IM_INTERNAL_SECRET,
     adminUsername: process.env.IM_ADMIN_USERNAME,
     adminPassword: process.env.IM_ADMIN_PASSWORD,
@@ -66,6 +69,7 @@ function parseArgs(argv: string[]): Args {
       case "--admin-password": args.adminPassword = value(); break;
       case "--backend": args.backend = value(); break;
       case "--gateway": args.gateway = value(); break;
+      case "--internal-url": args.internalUrl = value(); break;
       case "--conversation": args.conversation = value(); break;
       case "--join": args.join = value(); break;
       case "--create-group": args.createGroup = value(); break;
@@ -100,7 +104,7 @@ async function main(): Promise<void> {
         uuid: args.uuid ?? args.name,
         name: args.name,
         nickname: args.nickname,
-      });
+      }, args.internalUrl);
 
   const me = await client.me();
 

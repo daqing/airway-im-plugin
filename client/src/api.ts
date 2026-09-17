@@ -136,12 +136,15 @@ export class IMClient {
 
   // Mint a credential through the server-to-server endpoint. Intended for
   // local development and demos; production hosts sign credentials themselves.
+  // The internal API lives on its own listener, so mintUrl (default: baseUrl)
+  // usually points at a different port than the public API.
   static async mint(
     baseUrl: string,
     internalSecret: string,
     identity: { uuid: string; name: string; nickname?: string },
+    mintUrl?: string,
   ): Promise<IMClient> {
-    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/internal/v1/credentials`, {
+    const res = await fetch(`${(mintUrl ?? baseUrl).replace(/\/+$/, "")}/internal/v1/credentials`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

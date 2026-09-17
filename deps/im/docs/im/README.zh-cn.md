@@ -38,6 +38,10 @@
 3. 每个已提交的事件推送到 gateway 的内部投递端点，仅在 gateway 接受后才确认。
 4. gateway 将事件扇出给本机上在线的接收者。
 
+backend 的服务间内部 API（`/internal/v1/*` —— 第 2 步的 outbox 轮询/确认、
+网关鉴权、凭证签发）由独立 listener 提供，默认只监听回环地址
+（`IM_INTERNAL_ADDR`，默认 `127.0.0.1:1906`），不挂在公开端口上。
+
 WebSocket 投递只是低延迟优化，绝不是消息的持久副本：离线客户端通过基于
 sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）；客户端按
 `message_id` / `event_id` 去重，按 `sequence` 排序。
@@ -160,8 +164,10 @@ go run . plugin:install github.com/daqing/airway-im-plugin   # 在宿主应用�
 
 本地目录安装可改用指向本仓库的 `replace` 指令。启用即向宿主的
 `plugins.go` 添加 blank import `_ "github.com/daqing/airway-im-plugin"`；
-import 时插件注册其路由（`/api/v1/...`、`/admin/api`、`/internal/v1`）、
-Go DSL 迁移和 `User` REPL 模型。`plugin:install` 还会把插件的 `deps/`
+import 时插件注册其路由（`/api/v1/...`、`/admin/api`）、
+Go DSL 迁移和 `User` REPL 模型。内部 API（`/internal/v1`）单独提供：
+宿主启动时插件会为它启动专用 listener（`IM_INTERNAL_ADDR`，默认
+`127.0.0.1:1906`）。`plugin:install` 还会把插件的 `deps/`
 目录原样复制进宿主项目根目录 —— `gateway/`、`delivery/` 两个配套服务
 由此到达宿主（它们的 `go.mod.templ` 落地为 `go.mod`，已存在的文件不会
 被覆盖）。然后执行宿主的 `db:migrate` 创建 IM 表，
@@ -191,15 +197,33 @@ IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注
 必须共享同一个 `IM_INTERNAL_SECRET`）：
 
 ```bash
-(cd deps/gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)   # gateway :1910
-(cd deps/delivery && BACKEND_URL=http://127.0.0.1:1905 \
+(cd deps/gateway && BACKEND_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
+(cd deps/delivery && BACKEND_URL=http://127.0.0.1:1906 \
                      GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
+
+`BACKEND_URL` 指向 backend 的内部 API listener（`IM_INTERNAL_ADDR`，默认
+`127.0.0.1:1906`）而不是公开端口 —— 配套服务只调用 `/internal/v1/*`。
 
 配套服务的模块文件以 `go.mod.templ` 形式随插件分发（Go module zip 会丢弃嵌套的
 `go.mod`），`plugin:install` 会在宿主中将其落地为 `go.mod`。想直接开发本仓库，
 用 `replace` 指令把宿主的 `go.mod` 指向本地检出，并在本仓库执行一次
 `just deps-setup` 生成 `deps/*/go.mod`，即可直接 `go run`。
+
+### 从旧版本插件升级
+
+旧版本插件把内部 API（`/internal/v1/*`）挂在公开端口上；现在它由独立
+listener 提供（`IM_INTERNAL_ADDR`，默认 `127.0.0.1:1906`），公开端口访问
+它会返回 404。在宿主 `go.mod` 中升级插件依赖后：
+
+- **把 gateway 和 delivery 的 `BACKEND_URL` 指向内部 listener**（例如
+  `http://127.0.0.1:1906`）。随插件分发的默认值已经指向新地址；只有显式
+  设置过 `BACKEND_URL`（通常是 `http://<host>:1905`）的部署需要修改，
+  否则实时链路会中断。
+- 如果 gateway/delivery 与 backend 不在同一台机器，把 `IM_INTERNAL_ADDR`
+  绑定到内网网卡（代替默认的回环地址），并确保该端口不对公网开放。
+
+客户端、admin API 与 WebSocket 通信协议均不受影响。
 
 ## 用户认证
 
@@ -208,10 +232,10 @@ IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注
 凭证格式、宿主侧签发示例（Go、Node.js、Python）与密钥轮换规则见
 [`docs/design/identity.md`](design/identity.md)。
 
-本地开发时，最快捷的取凭证方式是 server-to-server 签发端点：
+本地开发时，最快捷的取凭证方式是内部 listener 上的 server-to-server 签发端点：
 
 ```bash
-curl -sX POST http://127.0.0.1:1905/internal/v1/credentials \
+curl -sX POST http://127.0.0.1:1906/internal/v1/credentials \
   -H "X-IM-Internal-Secret: <IM_INTERNAL_SECRET>" \
   -H 'Content-Type: application/json' \
   -d '{"uuid":"user-1","name":"alice","nickname":"Alice"}'
@@ -276,7 +300,7 @@ HTTP API 一览：
 | `POST /api/v1/conversations/:uuid/messages` | 向指定会话发消息 |
 | `POST /api/v1/messages` | 按会话 ID 发消息 |
 | `/admin/api/*` | 管理后台（登录、状态、用户、审核） |
-| `/internal/v1/*` | 服务间接口（网关鉴权、凭证签发、outbox、确认）—— 密钥保护 |
+| `/internal/v1/*` | 服务间接口（网关鉴权、凭证签发、outbox、确认）—— 独立 listener（默认 `127.0.0.1:1906`）+ 密钥保护 |
 
 ## 建立 WebSocket 连接
 
@@ -311,9 +335,10 @@ HTTP API 一览：
 | `IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD` | backend | — | 管理后台凭据 |
 | `IM_GATEWAY_URL` | backend | `http://127.0.0.1:1910` | 管理后台在线状态聚合与撤销踢连使用的 gateway 基础 URL |
 | `IM_INTERNAL_SECRET` | 全部 | — | `/internal/v1/*` 与网关投递端点的共享密钥；实时投递**必需** |
+| `IM_INTERNAL_ADDR` | backend | `127.0.0.1:1906` | 内部 API（`/internal/v1/*`）监听地址；勿暴露到公网 |
 | `ADMIN_GATEWAY_METRICS_URL` / `ADMIN_DELIVERY_METRICS_URL` | backend | 本机的 gateway/delivery | 管理状态聚合的指标端点 |
 | `GATEWAY_ADDR` | gateway | `:1910` | 网关监听地址 |
-| `BACKEND_URL` | gateway、delivery | `http://127.0.0.1:1905` | backend 基础 URL |
+| `BACKEND_URL` | gateway、delivery | `http://127.0.0.1:1906` | backend 内部 API 基础 URL |
 | `GATEWAY_ALLOWED_ORIGINS` | gateway | — | 浏览器客户端的 `Origin` 白名单（逗号分隔） |
 | `DELIVERY_ADDR` | delivery | `:1920` | 投递器监听地址 |
 | `GATEWAY_URL` | delivery | `http://127.0.0.1:1910` | 投递推送的网关基础 URL |

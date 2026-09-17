@@ -49,6 +49,11 @@ The plugin follows a three-service layout — backend / gateway / delivery:
    and acknowledged only after the gateway accepted it.
 4. The gateway fans the event out to the locally connected recipients.
 
+The backend's internal service-to-service API (`/internal/v1/*` — the outbox
+poll/ack in step 2, the gateway's auth check, credential minting) is served
+on a separate listener that defaults to loopback only (`IM_INTERNAL_ADDR`,
+default `127.0.0.1:1906`); it is never mounted on the public port.
+
 WebSocket delivery is a latency optimization, never the durable copy of a
 message: offline clients recover through the sequence-based synchronization
 API. Delivery is at-least-once; clients deduplicate by `message_id` /
@@ -182,8 +187,10 @@ go run . plugin:install github.com/daqing/airway-im-plugin   # in the host app
 A local checkout can be installed with a `replace` directive pointing at this
 directory instead. Enabling adds a blank import
 `_ "github.com/daqing/airway-im-plugin"` to the host's `plugins.go`; on
-import the plugin registers its routes (`/api/v1/...`, `/admin/api`,
-`/internal/v1`), its Go DSL migrations, and the `User` REPL model.
+import the plugin registers its routes (`/api/v1/...`, `/admin/api`), its Go
+DSL migrations, and the `User` REPL model. The internal API (`/internal/v1`)
+is served separately: when the host boots, the plugin starts a dedicated
+listener for it (`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`).
 `plugin:install` also copies the plugin's `deps/` tree into the host project
 root — that is how the `gateway/` and `delivery/` companion services arrive
 (their `go.mod.templ` files are installed as `go.mod`; existing files are
@@ -218,10 +225,14 @@ Then start the companion services from the `deps/` tree that
 `IM_INTERNAL_SECRET`):
 
 ```bash
-(cd deps/gateway && BACKEND_URL=http://127.0.0.1:1905 go run .)   # gateway :1910
-(cd deps/delivery && BACKEND_URL=http://127.0.0.1:1905 \
+(cd deps/gateway && BACKEND_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
+(cd deps/delivery && BACKEND_URL=http://127.0.0.1:1906 \
                      GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
+
+`BACKEND_URL` points at the backend's internal API listener
+(`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`), not the public port — the
+companion services only call `/internal/v1/*`.
 
 The companion services ship their module files as `go.mod.templ` (Go module
 zips drop nested `go.mod` files); `plugin:install` materializes them as
@@ -229,6 +240,23 @@ zips drop nested `go.mod` files); `plugin:install` materializes them as
 `go.mod` at the local checkout with a `replace` directive, and run
 `just deps-setup` once here to materialize `deps/*/go.mod` for direct
 `go run`.
+
+### Upgrading from an older plugin version
+
+Earlier plugin versions served the internal API (`/internal/v1/*`) on the
+public port; it now lives on its own listener (`IM_INTERNAL_ADDR`, default
+`127.0.0.1:1906`) and the public port answers 404 for it. After bumping the
+plugin dependency in the host's `go.mod`:
+
+- **Point `BACKEND_URL` of gateway and delivery at the internal listener**
+  (e.g. `http://127.0.0.1:1906`). The shipped defaults already do; only
+  deployments that set `BACKEND_URL` explicitly (typically to
+  `http://<host>:1905`) must change it, or the realtime path stops working.
+- If gateway/delivery run on different hosts than the backend, bind
+  `IM_INTERNAL_ADDR` to an internal interface instead of the loopback
+  default and keep that port firewalled from the public network.
+
+Clients, the admin API, and the WebSocket wire protocol are unaffected.
 
 ## Authenticating users
 
@@ -240,10 +268,10 @@ Node.js, Python), and rotation rules are in
 [`docs/design/identity.md`](docs/design/identity.md).
 
 For local development, the quickest way to get a credential is the
-server-to-server minting endpoint:
+server-to-server minting endpoint on the internal listener:
 
 ```bash
-curl -sX POST http://127.0.0.1:1905/internal/v1/credentials \
+curl -sX POST http://127.0.0.1:1906/internal/v1/credentials \
   -H "X-IM-Internal-Secret: <IM_INTERNAL_SECRET>" \
   -H 'Content-Type: application/json' \
   -d '{"uuid":"user-1","name":"alice","nickname":"Alice"}'
@@ -348,9 +376,10 @@ Endpoint guides: [`docs/api/messages.md`](docs/api/messages.md),
 | `IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD` | backend | — | Admin console credentials |
 | `IM_GATEWAY_URL` | backend | `http://127.0.0.1:1910` | Gateway base URL for admin online-status and revocation kicks |
 | `IM_INTERNAL_SECRET` | all | — | Shared secret for `/internal/v1/*` and the gateway deliver endpoint; **required** for realtime delivery |
+| `IM_INTERNAL_ADDR` | backend | `127.0.0.1:1906` | Listen address of the internal API (`/internal/v1/*`); keep it off the public network |
 | `ADMIN_GATEWAY_METRICS_URL` / `ADMIN_DELIVERY_METRICS_URL` | backend | gateway/delivery on localhost | Metrics endpoints aggregated by admin status |
 | `GATEWAY_ADDR` | gateway | `:1910` | Gateway listen address |
-| `BACKEND_URL` | gateway, delivery | `http://127.0.0.1:1905` | Backend base URL |
+| `BACKEND_URL` | gateway, delivery | `http://127.0.0.1:1906` | Backend internal API base URL |
 | `GATEWAY_ALLOWED_ORIGINS` | gateway | — | Comma-separated `Origin` allowlist for browser clients |
 | `DELIVERY_ADDR` | delivery | `:1920` | Delivery worker listen address |
 | `GATEWAY_URL` | delivery | `http://127.0.0.1:1910` | Gateway base URL for delivery push |
