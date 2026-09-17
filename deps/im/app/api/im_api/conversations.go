@@ -78,18 +78,8 @@ func GetConversation(c *gin.Context) {
 		return
 	}
 
-	members := make([]conversationMemberResponse, 0)
-	memberQuery := `
-		SELECT u.id, u.username, u.nickname, u.avatar_url, cm.role
-		FROM conversation_members cm
-		JOIN users u ON u.id = cm.user_id
-		WHERE cm.conversation_id = ? AND cm.left_at IS NULL
-		ORDER BY
-			CASE cm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
-			cm.joined_at ASC,
-			u.id ASC
-	`
-	if err := db.Select(&members, db.Rebind(memberQuery), conversationUUID); err != nil {
+	members, err := loadActiveMembers(db, conversationUUID)
+	if err != nil {
 		respondError(c, http.StatusInternalServerError, 10000, "Could not load conversation members")
 		return
 	}

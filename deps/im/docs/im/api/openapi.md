@@ -275,6 +275,131 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/conversations/{conversation_uuid}/members:
+    post:
+      tags: [Conversations]
+      operationId: addConversationMembers
+      summary: Add members to a group conversation
+      description: >-
+        Adds users to a group conversation. Only an active owner or admin may
+        add members; direct conversations are rejected. Already-active members
+        are skipped, so the operation is idempotent. A former member rejoins
+        with left_at cleared, joined_at refreshed, and the base member role.
+        When at least one member was added, a conversation.member_added outbox
+        event fans out to every active member, including the ones just added.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversation_uuid
+          in: path
+          required: true
+          description: Opaque conversation identifier.
+          schema:
+            $ref: '#/components/schemas/ULID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMembersRequest'
+            example:
+              member_ids: [4, 5]
+      responses:
+        '200':
+          description: Updated conversation details with the active member list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationDetailsEnvelope'
+        '400':
+          description: >-
+            Invalid or expired credential, malformed conversation UUID, JSON
+            body, empty normalized member list, non-group conversation, or one
+            or more members do not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The caller is an active member but not an owner or admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: >-
+            Conversation does not exist or the caller is not an active member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/conversations/{conversation_uuid}/members/{user_id}:
+    delete:
+      tags: [Conversations]
+      operationId: removeConversationMember
+      summary: Remove a member from a group conversation
+      description: >-
+        Removes a user from a group conversation by setting left_at, preserving
+        membership history. Only an active owner or admin may remove members;
+        an admin may only remove plain members, and the owner can never be
+        removed (ownership transfer is a separate operation). Callers cannot
+        remove themselves. Removing a user who is not an active member is an
+        idempotent no-op. On an actual removal, a conversation.member_removed
+        outbox event fans out to every active member plus the removed user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversation_uuid
+          in: path
+          required: true
+          description: Opaque conversation identifier.
+          schema:
+            $ref: '#/components/schemas/ULID'
+        - name: user_id
+          in: path
+          required: true
+          description: Numeric ID of the user to remove.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: Updated conversation details with the active member list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationDetailsEnvelope'
+        '400':
+          description: >-
+            Invalid or expired credential, malformed conversation UUID or user
+            ID, non-group conversation, self-removal, or the target is the
+            group owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: >-
+            The caller is an active member but lacks the required role, or an
+            admin tried to remove another admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: >-
+            Conversation does not exist or the caller is not an active member.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/conversations/{conversation_id}/messages:
     get:
       tags: [Messages]
@@ -1083,6 +1208,23 @@ components:
           type: [string, 'null']
           format: date-time
 
+    AddMembersRequest:
+      type: object
+      additionalProperties: false
+      required: [member_ids]
+      properties:
+        member_ids:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+          description: >-
+            Users to add. Duplicates and the authenticated user's ID are
+            removed; at least one other user must remain. All IDs must exist;
+            already-active members are skipped.
+
     CreateConversationRequest:
       type: object
       additionalProperties: false
@@ -1337,6 +1479,40 @@ When an administrator marks an existing message as illegal, the Gateway sends
 the same routing fields with `"event": "message.moderated"`. Because that
 sequence may already be cached, clients reload starting at `sequence - 1` and
 replace the local message with the masked API response.
+
+When an owner or admin adds members to a group, the Gateway fans out a
+`conversation.member_added` event to every active member, including the ones
+just added:
+
+```json
+{
+  "event_id": "01J2Q8A4FQ8NA8R6YDJ2M98K3R",
+  "event": "conversation.member_added",
+  "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
+  "added_user_ids": [4, 5],
+  "targets": {"user_ids":[1,2,4,5]}
+}
+```
+
+Clients should refresh the member list via
+`GET /api/v1/conversations/:uuid`; a newly added client sees the group in its
+conversation list and can read history through the message endpoint.
+
+A removal fans out `conversation.member_removed` to every active member plus
+the removed user (so their client learns it was kicked):
+
+```json
+{
+  "event_id": "01J2Q8A4FQ8NA8R6YDJ2M98K3S",
+  "event": "conversation.member_removed",
+  "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
+  "removed_user_id": 5,
+  "targets": {"user_ids":[1,2,5]}
+}
+```
+
+A removed client immediately loses access: listing the group, reading its
+messages, and sending all fail with 403/404 from then on.
 
 Client requirements:
 

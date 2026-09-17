@@ -92,6 +92,12 @@ Design contracts:
 - One model for both kinds: `direct` (exactly two members, normalized-pair
   uniqueness, get-or-create semantics) and `group` (creator becomes `owner`,
   arbitrary member sets, `owner`/`admin`/`member` roles).
+- `POST /api/v1/conversations/:uuid/members` adds members to an existing group
+  and `DELETE /api/v1/conversations/:uuid/members/:user_id` removes one
+  (owner/admin; an admin manages plain members only; the owner cannot be
+  removed). Both are idempotent and fan out `conversation.member_added` /
+  `conversation.member_removed` events to all active members — a removal also
+  notifies the kicked user.
 - Opaque 26-character ULID identifiers; membership history preserved via
   `left_at` instead of row deletion.
 
@@ -145,8 +151,9 @@ Design contracts:
 | Path | Role | Default port |
 | --- | --- | --- |
 | repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin (package `implugin`): IM API, admin API, internal API, migrations, REPL models | — |
-| [`deps/gateway/`](deps/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
-| [`deps/delivery/`](deps/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
+| [`deps/gateway/`](deps/im/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
+| [`deps/delivery/`](deps/im/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
+| [`client/`](client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
 | [`docs/`](docs/) | Design docs, API guides, OpenAPI contract, 中文文档 | — |
 
 Key plugin packages:
@@ -304,6 +311,8 @@ HTTP API surface:
 | `GET /api/v1/conversations?type=group` | List my group conversations |
 | `POST /api/v1/conversations` | Create direct/group conversation |
 | `GET /api/v1/conversations/:uuid` | Conversation details and members |
+| `POST /api/v1/conversations/:uuid/members` | Add members to a group (owner/admin) |
+| `DELETE /api/v1/conversations/:uuid/members/:user_id` | Remove a member from a group (owner/admin) |
 | `GET /api/v1/conversations/:uuid/messages?after_sequence=N` | Message history / sync |
 | `POST /api/v1/conversations/:uuid/messages` | Send message to a conversation |
 | `POST /api/v1/messages` | Send message by conversation id |

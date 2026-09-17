@@ -234,6 +234,33 @@ Membership changes must be authorized and transactional. A group must have
 exactly one active owner. Removing or deactivating the owner therefore requires
 an ownership transfer or an explicit group-dissolution operation.
 
+Adding members to an existing group follows these rules:
+
+- only an active `owner` or `admin` may add members; direct conversations
+  reject membership changes outright;
+- the request is idempotent — already-active members are skipped, duplicates
+  and the caller's own ID are removed before validation, and every added user
+  must exist;
+- a former member rejoins by clearing `left_at`, refreshing `joined_at`, and
+  resetting the role to `member` (elevated roles are never restored
+  implicitly); and
+- the insert/rejoin and the `conversation.member_added` outbox event commit in
+  one transaction; the event targets every active member, including the ones
+  just added, so online clients can refresh their member list in real time.
+
+Removing a member follows the mirror-image rules:
+
+- only an active `owner` or `admin` may remove; an `admin` may remove only
+  plain members, never other admins;
+- the owner can never be removed — a group must always have exactly one
+  active owner, so removal requires an ownership transfer first;
+- callers cannot remove themselves (a leave operation is a separate feature);
+- removal sets `left_at` and is an idempotent no-op for users who are not
+  active members; and
+- the `conversation.member_removed` outbox event commits in the same
+  transaction and targets every active member **plus the removed user**, so
+  the kicked client's UI can react immediately.
+
 ## 6. API representation
 
 Both conversation types use a common response shape:
