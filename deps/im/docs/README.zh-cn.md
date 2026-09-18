@@ -130,8 +130,8 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | 路径 | 角色 | 默认端口 |
 | --- | --- | --- |
 | 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API、内部 API、迁移、REPL 模型 | — |
-| [`deps/gateway/`](../gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：WebSocket 网关 | 1910 |
-| [`deps/delivery/`](../delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：事务性 outbox 投递器 | 1920 |
+| [`deps/im/gateway/`](../gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：WebSocket 网关 | 1910 |
+| [`deps/im/delivery/`](../delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：事务性 outbox 投递器 | 1920 |
 | [`deps/im/docs/`](.) | 设计文档、API 指南、OpenAPI 契约、落地页（`index.html`）、中文文档 | — |
 
 插件关键包：
@@ -168,9 +168,9 @@ import 时插件注册其路由（`/api/v1/...`、`/admin/api`）、
 Go DSL 迁移和 `User` REPL 模型。内部 API（`/internal/v1`）单独提供：
 宿主启动时插件会为它启动专用 listener（`IM_INTERNAL_ADDR`，默认
 `127.0.0.1:1906`）。`plugin:install` 还会把插件的 `deps/`
-目录原样复制进宿主项目根目录 —— `gateway/`、`delivery/` 两个配套服务
-由此到达宿主（它们的 `go.mod.templ` 落地为 `go.mod`，已存在的文件不会
-被覆盖）。然后执行宿主的 `db:migrate` 创建 IM 表，
+目录原样复制进宿主自己的 `deps/` 目录 —— `gateway/`、`delivery/` 两个配套服务
+由此到达宿主的 `deps/im/gateway` 和 `deps/im/delivery`（它们的 `go.mod.templ`
+落地为 `go.mod`，已存在的文件不会被覆盖）。然后执行宿主的 `db:migrate` 创建 IM 表，
 并在宿主环境中设置 `IM_AUTH_SECRET`（实时链路还需 `IM_INTERNAL_SECRET`）。
 
 ### 独立运行
@@ -197,13 +197,21 @@ IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注
 必须共享同一个 `IM_INTERNAL_SECRET`）：
 
 ```bash
-(cd deps/gateway && BACKEND_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
-(cd deps/delivery && BACKEND_URL=http://127.0.0.1:1906 \
-                     GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
+(cd deps/im/gateway && BACKEND_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
+(cd deps/im/delivery && BACKEND_URL=http://127.0.0.1:1906 \
+                        GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
 
 `BACKEND_URL` 指向 backend 的内部 API listener（`IM_INTERNAL_ADDR`，默认
 `127.0.0.1:1906`）而不是公开端口 —— 配套服务只调用 `/internal/v1/*`。
+
+也可以用 Docker 跑起整套服务：`plugin:install` 会在宿主根目录生成
+`docker-compose.yml`，它构建 backend 并通过 Compose 的 `include` 引入插件的
+`deps/im/docker-compose.yml`（gateway + delivery），执行
+`docker compose up --build` 即可全部启动。如果宿主已有自己的
+`docker-compose.yml`，安装会跳过 —— 改在你的文件里加
+`include: [deps/im/docker-compose.yml]`，并确保你的应用服务名为 `backend`
+且带 healthcheck。
 
 配套服务的模块文件以 `go.mod.templ` 形式随插件分发（Go module zip 会丢弃嵌套的
 `go.mod`），`plugin:install` 会在宿主中将其落地为 `go.mod`。想直接开发本仓库，
@@ -349,8 +357,8 @@ HTTP API 一览：
 ```bash
 go test ./...                # 单元测试（im/admin/me/routes…）
 just deps-setup              # 一次性：deps/*/go.mod.templ -> go.mod
-(cd deps/gateway && go vet . && go build .)
-(cd deps/delivery && go vet . && go build .)
+(cd deps/im/gateway && go vet . && go build .)
+(cd deps/im/delivery && go vet . && go build .)
 ```
 
 测试覆盖：会话创建（单聊唯一性、成员校验）、消息持久化（幂等、

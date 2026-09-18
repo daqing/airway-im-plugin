@@ -150,8 +150,8 @@ Design contracts:
 | Path | Role | Default port |
 | --- | --- | --- |
 | repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin (package `implugin`): IM API, admin API, internal API, migrations, REPL models | — |
-| [`deps/gateway/`](deps/im/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
-| [`deps/delivery/`](deps/im/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
+| [`deps/im/gateway/`](deps/im/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
+| [`deps/im/delivery/`](deps/im/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
 | [`client/`](client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
 | [`deps/im/docs/`](deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
 
@@ -191,9 +191,10 @@ import the plugin registers its routes (`/api/v1/...`, `/admin/api`), its Go
 DSL migrations, and the `User` REPL model. The internal API (`/internal/v1`)
 is served separately: when the host boots, the plugin starts a dedicated
 listener for it (`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`).
-`plugin:install` also copies the plugin's `deps/` tree into the host project
-root — that is how the `gateway/` and `delivery/` companion services arrive
-(their `go.mod.templ` files are installed as `go.mod`; existing files are
+`plugin:install` also copies the plugin's `deps/` tree into the host's own
+`deps/` directory — that is how the `gateway/` and `delivery/` companion
+services arrive at `deps/im/gateway` and `deps/im/delivery` (their
+`go.mod.templ` files are installed as `go.mod`; existing files are
 never overwritten). Run the host's `db:migrate` to create the IM tables, and
 set `IM_AUTH_SECRET` (plus `IM_INTERNAL_SECRET` for the realtime path) in the
 host's environment.
@@ -225,14 +226,22 @@ Then start the companion services from the `deps/` tree that
 `IM_INTERNAL_SECRET`):
 
 ```bash
-(cd deps/gateway && BACKEND_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
-(cd deps/delivery && BACKEND_URL=http://127.0.0.1:1906 \
-                     GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
+(cd deps/im/gateway && BACKEND_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
+(cd deps/im/delivery && BACKEND_URL=http://127.0.0.1:1906 \
+                        GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
 
 `BACKEND_URL` points at the backend's internal API listener
 (`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`), not the public port — the
 companion services only call `/internal/v1/*`.
+
+Or run the whole stack with Docker: `plugin:install` drops a
+`docker-compose.yml` at the host root that builds the backend and pulls in
+the plugin's `deps/im/docker-compose.yml` (gateway + delivery) via Compose's
+`include`, so `docker compose up --build` starts everything. If the host
+already has its own `docker-compose.yml`, the install skips it — add
+`include: [deps/im/docker-compose.yml]` to your file instead, and make sure
+your app service is named `backend` with a healthcheck.
 
 The companion services ship their module files as `go.mod.templ` (Go module
 zips drop nested `go.mod` files); `plugin:install` materializes them as
@@ -390,8 +399,8 @@ Endpoint guides: [`deps/im/docs/api/messages.md`](deps/im/docs/api/messages.md),
 ```bash
 go test ./...                # unit tests (im/admin/me/routes…)
 just deps-setup              # one-time: deps/*/go.mod.templ -> go.mod
-(cd deps/gateway && go vet . && go build .)
-(cd deps/delivery && go vet . && go build .)
+(cd deps/im/gateway && go vet . && go build .)
+(cd deps/im/delivery && go vet . && go build .)
 ```
 
 The test suite covers conversation creation (direct uniqueness,

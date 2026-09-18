@@ -423,7 +423,7 @@ go run . plugin:install github.com/daqing/airway-im-plugin</pre>
           <code>User</code> REPL 模型；内部 API（<code>/internal/v1</code>）由插件在宿主启动时单独监听
           （<code>IM_INTERNAL_ADDR</code>，默认 <code>127.0.0.1:1906</code>），不暴露在公开端口上。
           同时把插件 <code>deps/</code> 目录下的 gateway、delivery
-          复制进宿主项目根目录（<code>go.mod.templ</code> 落地为 <code>go.mod</code>，已存在的文件不会覆盖）。
+          复制进宿主的 <code>deps/im/</code> 目录（<code>go.mod.templ</code> 落地为 <code>go.mod</code>，已存在的文件不会覆盖）。
           随后在宿主环境设置 <code>IM_AUTH_SECRET</code>
           （实时链路再加 <code>IM_INTERNAL_SECRET</code>），并执行宿主自己的 <code>db:migrate</code> 建表。</p>
       </div>
@@ -442,8 +442,12 @@ go run . db:migrate
 <span class="c"># 3. 启动三个服务（共享 IM_INTERNAL_SECRET）</span>
 <span class="c">#    gateway/delivery 由 plugin:install 复制到宿主 deps/ 下</span>
 go run . server                           <span class="c"># backend  :1905</span>
-(cd deps/gateway  &amp;&amp; go run .)        <span class="c"># gateway  :1910</span>
-(cd deps/delivery &amp;&amp; go run .)        <span class="c"># delivery :1920</span></pre>
+(cd deps/im/gateway  &amp;&amp; go run .)     <span class="c"># gateway  :1910</span>
+(cd deps/im/delivery &amp;&amp; go run .)     <span class="c"># delivery :1920</span>
+
+<span class="c"># 或：docker compose up --build</span>
+<span class="c"># （install 已在宿主根目录生成 docker-compose.yml，</span>
+<span class="c">#  通过 include 级联 deps/im/docker-compose.yml）</span></pre>
       </div>
       <div class="card">
         <h3>核心环境变量</h3>

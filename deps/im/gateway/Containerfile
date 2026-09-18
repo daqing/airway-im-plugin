@@ -5,8 +5,8 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories
 RUN go env -w GOPROXY=${GOPROXY}
 
 WORKDIR /src
-COPY go.mod.templ go.sum ./
-RUN mv go.mod.templ go.mod && go mod download
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gateway .
 

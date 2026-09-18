@@ -1,0 +1,51 @@
+# IM stack for a fresh host: the backend service builds this project, and the
+# include pulls in the plugin's gateway/delivery companions (their build
+# contexts resolve relative to deps/im/). Already have your own
+# docker-compose.yml? plugin:install skips this file — add the same `include`
+# to yours and make sure your app service is named `backend` with a
+# healthcheck.
+include:
+  - deps/im/docker-compose.yml
+
+x-internal-environment: &internal-environment
+  IM_INTERNAL_SECRET: ${IM_INTERNAL_SECRET:-airway-im-local-development-secret}
+  TZ: ${TZ:-Asia/Shanghai}
+  NO_PROXY: backend,gateway,delivery,127.0.0.1,localhost
+  no_proxy: backend,gateway,delivery,127.0.0.1,localhost
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    image: airway-im-backend:local
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/app/app db:migrate && exec /app/app"]
+    environment:
+      <<: *internal-environment
+      AIRWAY_ENV: production
+      PORT: "1905"
+      DSN: sqlite:///data/airway-im.db
+      STORAGE_DRIVER: local
+      STORAGE_ROOT: /data/storage
+      IM_ADMIN_USERNAME: ${IM_ADMIN_USERNAME:-admin}
+      IM_ADMIN_PASSWORD: ${IM_ADMIN_PASSWORD:-airway-im-local-admin-password}
+      IM_AUTH_SECRET: ${IM_AUTH_SECRET:-airway-im-local-development-auth-secret}
+      ADMIN_GATEWAY_METRICS_URL: http://gateway:1910/metrics
+      ADMIN_DELIVERY_METRICS_URL: http://delivery:1920/metrics
+    ports:
+      - "${BACKEND_PORT:-1905}:1905"
+    volumes:
+      - backend-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:1905/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  backend-data:
