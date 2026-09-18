@@ -1,5 +1,5 @@
 // WebSocket client for the Airway IM gateway.
-// Protocol (docs/design/gateway.md):
+// Protocol (deps/im/docs/design/gateway.md):
 //   - connect to ws://<gateway>/ws
 //   - first application frame must be {"cmd":"auth","opts":["<credential>"]} within 10s
 //   - success replies {"code":0,"data":"OK"}; failure closes with 1008

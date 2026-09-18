@@ -12,7 +12,7 @@ The plugin authenticates users through host-signed HMAC credentials: the host
 application signs its `(name, uuid)` identity pair, and the plugin verifies
 it statelessly.
 A Chinese version of this document is available at
-[`docs/README.zh-cn.md`](docs/README.zh-cn.md).
+[`deps/im/docs/README.zh-cn.md`](deps/im/docs/README.zh-cn.md).
 
 ## Table of contents
 
@@ -61,13 +61,13 @@ API. Delivery is at-least-once; clients deduplicate by `message_id` /
 
 Design contracts:
 
-- [`docs/design/identity.md`](docs/design/identity.md) — host-signed
+- [`deps/im/docs/design/identity.md`](deps/im/docs/design/identity.md) — host-signed
   credential format, minting, client usage, rotation and revocation
-- [`docs/design/gateway.md`](docs/design/gateway.md) — wire protocol,
+- [`deps/im/docs/design/gateway.md`](deps/im/docs/design/gateway.md) — wire protocol,
   connection lifecycle, limits, security model
-- [`docs/design/delivery.md`](docs/design/delivery.md) — outbox pattern,
+- [`deps/im/docs/design/delivery.md`](deps/im/docs/design/delivery.md) — outbox pattern,
   fan-out strategy, ordering and idempotency semantics
-- [`docs/design/conversation.md`](docs/design/conversation.md) — conversation
+- [`deps/im/docs/design/conversation.md`](deps/im/docs/design/conversation.md) — conversation
   model, direct-conversation uniqueness, membership and authorization rules
 
 ## Features
@@ -153,7 +153,7 @@ Design contracts:
 | [`deps/gateway/`](deps/im/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
 | [`deps/delivery/`](deps/im/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
 | [`client/`](client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
-| [`docs/`](docs/) | Design docs, API guides, OpenAPI contract, 中文文档 | — |
+| [`deps/im/docs/`](deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
 
 Key plugin packages:
 
@@ -265,7 +265,7 @@ into an HMAC credential. A user is auto-registered in the `users` table the
 first time a valid credential is presented — there is no separate
 provisioning step. The full format, host-side signing examples (Go,
 Node.js, Python), and rotation rules are in
-[`docs/design/identity.md`](docs/design/identity.md).
+[`deps/im/docs/design/identity.md`](deps/im/docs/design/identity.md).
 
 For local development, the quickest way to get a credential is the
 server-to-server minting endpoint on the internal listener:
@@ -288,7 +288,7 @@ All endpoints answer with the standard envelope
 `{"code":0,"data":…,"message":null}` and authenticate via
 `Authorization: Bearer <credential>`. The complete client contract —
 including error codes and the WebSocket event format — is in
-[`docs/api/openapi.md`](docs/api/openapi.md).
+[`deps/im/docs/api/openapi.md`](deps/im/docs/api/openapi.md).
 
 ```bash
 # Create a group with user 2 (bob) as a member
@@ -360,8 +360,8 @@ credential as the **first** application message:
 - `{"cmd":"ping"}` answers `{"code":0,"data":"PONG"}`; protocol-level
   ping/pong runs automatically every 30 seconds.
 
-Endpoint guides: [`docs/api/messages.md`](docs/api/messages.md),
-[`docs/api/me.md`](docs/api/me.md), [`docs/api/admin.md`](docs/api/admin.md).
+Endpoint guides: [`deps/im/docs/api/messages.md`](deps/im/docs/api/messages.md),
+[`deps/im/docs/api/me.md`](deps/im/docs/api/me.md), [`deps/im/docs/api/admin.md`](deps/im/docs/api/admin.md).
 
 ## Configuration reference
 

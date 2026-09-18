@@ -1,5 +1,5 @@
 // Typed HTTP client for the Airway IM plugin REST API.
-// See docs/api/openapi.md for the contract this implements.
+// See deps/im/docs/api/openapi.md for the contract this implements.
 
 export interface User {
   id: number;

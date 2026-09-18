@@ -2,7 +2,7 @@
 // delivers real-time IM events. It authenticates every connection against the
 // backend's internal API and receives delivery commands from the delivery
 // service; it contains no conversation business logic. See
-// docs/design/gateway.md for the wire protocol and architecture.
+// deps/im/docs/design/gateway.md for the wire protocol and architecture.
 package main
 
 import (

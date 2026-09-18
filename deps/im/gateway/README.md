@@ -31,7 +31,7 @@ The gateway replies `{"code":0,"data":"OK","message":null}` on success and
 closes the socket with `1008` after an invalid, missing, or timed-out attempt.
 After authentication, server events (for example `message.created`) arrive as
 unsolicited JSON frames; clients respond to protocol ping frames
-automatically. See `docs/design/gateway.md` in the repository root for the
+automatically. See `deps/im/docs/design/gateway.md` in the repository root for the
 full protocol, limits, and delivery semantics.
 
 ## Configuration

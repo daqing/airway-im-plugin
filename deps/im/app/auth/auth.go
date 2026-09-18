@@ -5,7 +5,7 @@
 // the client. Verifying that credential registers the user on first sight
 // and refreshes its profile on later logins.
 //
-// Credential format (see docs/design/identity.md):
+// Credential format (see deps/im/docs/design/identity.md):
 //
 //	im1.<base64url(payload JSON)>.<base64url(HMAC-SHA256(secret, "im1.".<payload>))>
 //

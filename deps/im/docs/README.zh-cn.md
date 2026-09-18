@@ -1,9 +1,9 @@
 # airway-im-plugin（中文文档）
 
-一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：宿主签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。配套的 gateway 与 delivery 服务随插件一起在 [`deps/`](../deps/) 下分发，在任何启用本插件的 Airway 宿主应用中即可独立跑起整套服务。
+一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：宿主签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。下分发，在任何启用本插件的 Airway 宿主应用中即可独立跑起整套服务。配套的 gateway 与 delivery 服务随插件一起在 [`deps/`](../../) 下分发，在任何启用本插件的 Airway 宿主应用中即可独立跑起整套服务。
 
 插件通过宿主签名的 HMAC 凭证认证用户：宿主应用对自己的 `(name, uuid)` 身份二元组
-签名，插件无状态验签。英文版文档位于仓库根目录的 [`README.md`](../README.md)。
+签名，插件无状态验签。英文版文档位于仓库根目录的 [`README.md`](../../../README.md)。
 
 ## 目录
 
@@ -48,13 +48,13 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 设计契约文档：
 
-- [`docs/design/identity.md`](design/identity.md) —— 宿主签名凭证格式、签发
+- [`deps/im/docs/design/identity.md`](design/identity.md) —— 宿主签名凭证格式、签发
   方式、客户端用法、轮换与撤销
-- [`docs/design/gateway.md`](design/gateway.md) —— 通信协议、连接生命周期、
+- [`deps/im/docs/design/gateway.md`](design/gateway.md) —— 通信协议、连接生命周期、
   限制与安全模型
-- [`docs/design/delivery.md`](design/delivery.md) —— outbox 模式、扇出策略、
+- [`deps/im/docs/design/delivery.md`](design/delivery.md) —— outbox 模式、扇出策略、
   顺序与幂等语义
-- [`docs/design/conversation.md`](design/conversation.md) —— 会话模型、单聊
+- [`deps/im/docs/design/conversation.md`](design/conversation.md) —— 会话模型、单聊
   唯一性、成员与授权规则
 
 ## 功能介绍
@@ -130,9 +130,9 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | 路径 | 角色 | 默认端口 |
 | --- | --- | --- |
 | 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API、内部 API、迁移、REPL 模型 | — |
-| [`deps/gateway/`](../deps/gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：WebSocket 网关 | 1910 |
-| [`deps/delivery/`](../deps/delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：事务性 outbox 投递器 | 1920 |
-| [`docs/`](.) | 设计文档、API 指南、OpenAPI 契约、中文文档 | — |
+| [`deps/gateway/`](../gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：WebSocket 网关 | 1910 |
+| [`deps/delivery/`](../delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：事务性 outbox 投递器 | 1920 |
+| [`deps/im/docs/`](.) | 设计文档、API 指南、OpenAPI 契约、落地页（`index.html`）、中文文档 | — |
 
 插件关键包：
 
@@ -230,7 +230,7 @@ listener 提供（`IM_INTERNAL_ADDR`，默认 `127.0.0.1:1906`），公开端口
 用户由宿主应用的 `(name, uuid)` 二元组标识，并签名成 HMAC 凭证。凭证首次
 认证成功时，用户会自动注册到 `users` 表 —— 没有单独的"开户"步骤。完整的
 凭证格式、宿主侧签发示例（Go、Node.js、Python）与密钥轮换规则见
-[`docs/design/identity.md`](design/identity.md)。
+[`deps/im/docs/design/identity.md`](design/identity.md)。
 
 本地开发时，最快捷的取凭证方式是内部 listener 上的 server-to-server 签发端点：
 
@@ -249,7 +249,7 @@ IM API。凭证默认 24 小时过期，按需重新签发即可。
 
 所有端点返回统一信封 `{"code":0,"data":…,"message":null}`，并通过
 `Authorization: Bearer <凭证>` 认证。完整的客户端契约（含错误码与
-WebSocket 事件格式）见 [`docs/api/openapi.md`](api/openapi.md)。
+WebSocket 事件格式）见 [`deps/im/docs/api/openapi.md`](api/openapi.md)。
 
 ```bash
 # 创建群聊，拉用户 2（bob）入群
@@ -319,8 +319,8 @@ HTTP API 一览：
 - `{"cmd":"ping"}` 返回 `{"code":0,"data":"PONG"}`；协议层 ping/pong
   每 30 秒自动运行。
 
-端点详解：[`docs/api/messages.md`](api/messages.md)、
-[`docs/api/me.md`](api/me.md)、[`docs/api/admin.md`](api/admin.md)。
+端点详解：[`deps/im/docs/api/messages.md`](api/messages.md)、
+[`deps/im/docs/api/me.md`](api/me.md)、[`deps/im/docs/api/admin.md`](api/admin.md)。
 
 ## 配置项参考
 

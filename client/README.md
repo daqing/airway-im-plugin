@@ -107,7 +107,7 @@ In-chat commands: `/add <id>[,<id>...]` (owner/admin adds members),
 
 | Path | Role |
 | --- | --- |
-| `src/api.ts` | Typed REST client matching `docs/api/openapi.md` |
+| `src/api.ts` | Typed REST client matching `deps/im/docs/api/openapi.md` |
 | `src/gateway.ts` | Gateway WebSocket client: auth, ping, reconnect, event dedupe |
 | `src/chat.ts` | Terminal UI (redraw-based message pane + input line) |
 | `src/main.ts` | Interactive chat entry point |

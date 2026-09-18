@@ -4,7 +4,7 @@ import "github.com/daqing/airway/lib/migrate/schema"
 
 // RegisterUsers creates the IM identity table. The plugin ships no login
 // flow: users are auto-registered on first authentication, keyed by the
-// uuid carried inside a host-signed credential (see docs/design/identity.md).
+// uuid carried inside a host-signed credential (see deps/im/docs/design/identity.md).
 func RegisterUsers() {
 	schema.RegisterChange("20260914000000", "create_users", func(m *schema.Migrator) {
 		m.CreateTable("users", func(t *schema.Table) {

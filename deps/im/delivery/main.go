@@ -3,7 +3,7 @@
 // WebSocket gateway, and acknowledges it only after the gateway accepted the
 // delivery command. Messages are never lost between the durable commit and
 // the real-time push; duplicates are possible and clients deduplicate by
-// event/message ID. See docs/design/delivery.md for the full semantics.
+// event/message ID. See deps/im/docs/design/delivery.md for the full semantics.
 package main
 
 import (

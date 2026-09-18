@@ -611,7 +611,7 @@ paths:
         Exchanges IM_ADMIN_USERNAME / IM_ADMIN_PASSWORD credentials for a
         12-hour administrator session token. This plugin ships no user login
         flow; end users authenticate with host-signed credentials (see
-        docs/design/identity.md).
+        deps/im/docs/design/identity.md).
       security: []
       requestBody:
         required: true

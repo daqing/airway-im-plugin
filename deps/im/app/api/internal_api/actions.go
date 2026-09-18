@@ -62,7 +62,7 @@ func Authenticate(c *gin.Context) {
 // during their own login flow and hand the returned credential to the
 // client. The user is registered on first mint, and the credential carries
 // the user's current token_version so it can be revoked through the admin
-// API. See docs/design/identity.md for the format specification.
+// API. See deps/im/docs/design/identity.md for the format specification.
 func IssueCredential(c *gin.Context) {
 	if !internalAuthorized(c) {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": 10005, "data": nil, "message": "Internal authentication required"})
