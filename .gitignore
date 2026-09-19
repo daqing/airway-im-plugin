@@ -5,6 +5,9 @@
 /install/deps/im/gateway/gateway
 /install/deps/im/delivery/delivery
 
+# Ignore go.mod inside install/deps
+/install/deps/**/go.mod
+
 .env
 .env.local
 
