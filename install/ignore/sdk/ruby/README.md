@@ -65,7 +65,7 @@ computing the HMAC yourself) is reserved for the Airway project's own
 backend — platform-side code never holds the signing secret.
 
 Two things must be kept straight (full trust model in
-[identity.md](../../deps/im/docs/design/identity.md)):
+[identity.md](../../../deps/im/docs/design/identity.md)):
 
 - The credential is always obtained and delivered by **your backend**; the
   client never asks the IM server for one.
@@ -76,7 +76,9 @@ Two things must be kept straight (full trust model in
 ### 2. Call the IM API
 
 Every method returns the envelope's `data` (a Hash or Array) and raises
-`AirwayIM::Error` on failure:
+`AirwayIM::Error` on failure. Message responses come back as
+`AirwayIM::Message`, a Hash subclass — `message["id"]`, `message.id`, and
+`message.sender.uuid` all work:
 
 ```ruby
 im = AirwayIM::Client.new(
@@ -95,7 +97,8 @@ im.conversation(conversation["id"])       # conversation kind + members with rol
 # Send a message: the Idempotency-Key is generated automatically and reused
 # across network-failure retries, so a message is never duplicated
 im.send_message(conversation["id"], "你好", content_type: "text/plain")
-im.send_direct_message("user-2", "你好") # one call: get-or-create the direct conversation, then send
+message = im.send_direct_message("user-2", "你好") # one call: get-or-create the direct conversation, then send
+message.sequence                                  # Message is a Hash with reader methods; message["sequence"] works too
 
 # History / sequence sync (catch up from the last cursor after going offline,
 # returned in ascending order)
@@ -138,6 +141,30 @@ fresh credential and retries once; the `credential` field is updated),
 `timeout` (seconds, default 15). `content_type` accepts `text/markdown`
 (default) and `text/plain`; content is limited to 32768 bytes and the server
 normalizes CRLF to LF.
+
+### Message object
+
+`send_message`, `send_direct_message`, `messages`, and `each_message` return
+`AirwayIM::Message` objects — Hash subclasses with reader methods, so
+`message["id"]`, `message.id`, and `message.sender.uuid` all work:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string, 26-char ULID | Server-generated, globally unique message identifier; the stable key for deduplication. |
+| `conversation_id` | string, 26-char ULID | Conversation the message belongs to; route messages to their chat window by it. |
+| `sender.uuid` | string | Author's stable identity uuid (identity is uuid-only across the API and events). |
+| `sender.username` | string | Host-assigned account handle, stable for the account's lifetime. |
+| `sender.nickname` | string \| nil | Preferred display name; fall back to `username` when nil. |
+| `sender.avatar_url` | string \| nil | Avatar image URL; render a placeholder when nil. |
+| `content` | string | Message body, 1–32768 UTF-8 encoded bytes, CRLF normalized to LF by the server. A moderated message reads back as the literal `***`. |
+| `content_type` | string | `text/markdown` (default) or `text/plain` — how to render `content`. |
+| `created_at` | string, RFC 3339 UTC | Server commit timestamp; convert to the viewer's local time zone for display. |
+| `sequence` | integer ≥ 1 | Position within the conversation, allocated at commit. `(conversation_id, sequence)` is the total order to sort by; pass the last seen value as `after_sequence` to page history. |
+
+Sort by `sequence`, never by `created_at`. A retried send with the same
+`Idempotency-Key` returns the original message (same `id` and `sequence`), so
+retries never create a second local entry. `sender` reflects the author's
+current profile, not a send-time snapshot.
 
 ### `AirwayIM::Credentials` (signing and verification helpers)
 
@@ -234,9 +261,9 @@ by a cross-language vector from the Node.js reference implementation
 
 ## Protocol reference
 
-- API contract: [`deps/im/docs/api/openapi.md`](../../deps/im/docs/api/openapi.md)
-- Credential issuance: [`deps/im/docs/design/identity.md`](../../deps/im/docs/design/identity.md)
-- Admin console: [`deps/im/docs/api/admin.md`](../../deps/im/docs/api/admin.md)
+- API contract: [`deps/im/docs/api/openapi.md`](../../../deps/im/docs/api/openapi.md)
+- Credential issuance: [`deps/im/docs/design/identity.md`](../../../deps/im/docs/design/identity.md)
+- Admin console: [`deps/im/docs/api/admin.md`](../../../deps/im/docs/api/admin.md)
 
 ---
 

@@ -65,7 +65,7 @@ SDK 不含登录逻辑，也不负责身份认证。用户先在你的平台完�
 `IM_INTERNAL_SECRET`；能直接获取凭证的一方，就能冒充任意用户。
 
 其他语言与完整规则见
-[`deps/im/docs/design/identity.md`](../../deps/im/docs/design/identity.md)。
+[`deps/im/docs/design/identity.md`](../../../deps/im/docs/design/identity.md)。
 
 ### 2. 小程序内初始化并收发消息
 
@@ -148,6 +148,28 @@ App({
 
 `sendMessage` 的 `opts`：`contentType`（`text/markdown` 默认 / `text/plain`）、
 `idempotencyKey`（默认自动生成）、`retries`（网络失败重试次数，默认 1）。
+
+### Message 对象（`ChatMessage`）
+
+`sendMessage`、`sendDirectMessage`、`listMessages`、`history` 以及实时
+`message` 事件携带的都是同一个 `ChatMessage` 结构：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string，26 位 ULID | 服务端生成的全局唯一消息 ID；去重的稳定键。 |
+| `conversation_id` | string，26 位 ULID | 消息所属会话；据此路由到对应的聊天窗口。 |
+| `sender.uuid` | string | 作者的稳定身份 uuid（API 与事件中的身份一律用 uuid）。 |
+| `sender.username` | string | 宿主应用分配的账号名，账号生命周期内稳定。 |
+| `sender.nickname` | string \| null | 显示昵称；为 null 时回退用 `username` 渲染。 |
+| `sender.avatar_url` | string \| null | 头像 URL；为 null 时渲染占位图。 |
+| `content` | string | 消息正文，1–32768 个 UTF-8 字节，服务端已把 CRLF 归一为 LF。被审核屏蔽的消息读回字面量 `***`。 |
+| `content_type` | string | `text/markdown`（默认）或 `text/plain`——决定 `content` 的渲染方式。 |
+| `created_at` | string，RFC 3339 UTC | 服务端提交时间戳；展示时换算为用户本地时区。 |
+| `sequence` | number ≥ 1 | 消息在会话内的位置，提交时分配。`(conversation_id, sequence)` 是排序依据；把最后见到的值作为 `afterSequence` 传入即可翻历史。 |
+
+排序用 `sequence`，不要用 `created_at`。同一 `idempotencyKey` 的重试返回原始
+消息（`id`、`sequence` 都不变）；实时事件的去重与补洞 SDK 已自动处理。
+`sender` 反映作者当前资料，不是发送时刻的快照。
 
 ### 实时事件（`im.on(name, handler)`）
 
@@ -265,9 +287,9 @@ IM_INTERNAL_URL=http://127.0.0.1:1906 pnpm verify
 
 ## 协议参考
 
-- API 契约：[`deps/im/docs/api/openapi.md`](../../deps/im/docs/api/openapi.md)
-- 网关协议：[`deps/im/docs/design/gateway.md`](../../deps/im/docs/design/gateway.md)
-- 凭证签发：[`deps/im/docs/design/identity.md`](../../deps/im/docs/design/identity.md)
+- API 契约：[`deps/im/docs/api/openapi.md`](../../../deps/im/docs/api/openapi.md)
+- 网关协议：[`deps/im/docs/design/gateway.md`](../../../deps/im/docs/design/gateway.md)
+- 凭证签发：[`deps/im/docs/design/identity.md`](../../../deps/im/docs/design/identity.md)
 
 ---
 

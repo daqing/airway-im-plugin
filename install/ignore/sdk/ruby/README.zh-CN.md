@@ -58,7 +58,7 @@ minted.expires_at                       # ISO8601 字符串；ttl_seconds: 0 时
 持有签名密钥。
 
 两个必须分清的点（完整信任模型见
-[identity.md](../../deps/im/docs/design/identity.md)）：
+[identity.md](../../../deps/im/docs/design/identity.md)）：
 
 - 凭证永远由**你的后端**获取并下发，客户端从不向 IM 服务器索取凭证；
 - 铸造接口默认只监听 `127.0.0.1:1906`，跨机部署时经内网调用，不向公网暴露。
@@ -66,7 +66,9 @@ minted.expires_at                       # ISO8601 字符串；ttl_seconds: 0 时
 
 ### 2. 调用 IM API
 
-所有方法返回信封 `data`（Hash 或 Array），失败抛出 `AirwayIM::Error`：
+所有方法返回信封 `data`（Hash 或 Array），失败抛出 `AirwayIM::Error`。消息类
+响应返回 `AirwayIM::Message`——一个 Hash 子类，`message["id"]`、`message.id`、
+`message.sender.uuid` 均可使用：
 
 ```ruby
 im = AirwayIM::Client.new(
@@ -84,7 +86,8 @@ im.conversation(conversation["id"])       # 会话类型 + 成员及角色
 
 # 发送消息：自动生成 Idempotency-Key，网络失败自动用同一 key 重试，不会重发
 im.send_message(conversation["id"], "你好", content_type: "text/plain")
-im.send_direct_message("user-2", "你好") # 一步到位：get-or-create 单聊会话后直接发送
+message = im.send_direct_message("user-2", "你好") # 一步到位：get-or-create 单聊会话后直接发送
+message.sequence                                  # Message 是带读取方法的 Hash，message["sequence"] 也可以
 
 # 历史 / 序列同步（掉线后从上次游标补齐，升序返回）
 im.messages(conversation["id"], after_sequence: 42, limit: 100)
@@ -123,6 +126,29 @@ im.storage_url("avatars/202609/xxx.png")                # 下载地址
 callback，收到 `10001`/401 时自动换新凭证并重试一次；`credential` 字段随之
 更新）、`timeout`（秒，默认 15）。`content_type` 支持 `text/markdown`（默认）
 与 `text/plain`；内容上限 32768 字节，服务端会把 CRLF 归一为 LF。
+
+### Message 对象
+
+`send_message`、`send_direct_message`、`messages`、`each_message` 返回
+`AirwayIM::Message`——一个 Hash 子类，`message["id"]`、`message.id`、
+`message.sender.uuid` 均可使用：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string，26 位 ULID | 服务端生成的全局唯一消息 ID；去重的稳定键。 |
+| `conversation_id` | string，26 位 ULID | 消息所属会话；据此路由到对应的聊天窗口。 |
+| `sender.uuid` | string | 作者的稳定身份 uuid（API 与事件中的身份一律用 uuid）。 |
+| `sender.username` | string | 宿主应用分配的账号名，账号生命周期内稳定。 |
+| `sender.nickname` | string \| nil | 显示昵称；为 nil 时回退用 `username` 渲染。 |
+| `sender.avatar_url` | string \| nil | 头像 URL；为 nil 时渲染占位图。 |
+| `content` | string | 消息正文，1–32768 个 UTF-8 字节，服务端已把 CRLF 归一为 LF。被审核屏蔽的消息读回字面量 `***`。 |
+| `content_type` | string | `text/markdown`（默认）或 `text/plain`——决定 `content` 的渲染方式。 |
+| `created_at` | string，RFC 3339 UTC | 服务端提交时间戳；展示时换算为用户本地时区。 |
+| `sequence` | integer ≥ 1 | 消息在会话内的位置，提交时分配。`(conversation_id, sequence)` 是排序依据；把最后见到的值作为 `after_sequence` 传入即可翻历史。 |
+
+排序用 `sequence`，不要用 `created_at`。同一 `Idempotency-Key` 的重试返回
+原始消息（`id`、`sequence` 都不变），重试不会产生第二条本地记录。`sender`
+反映作者当前资料，不是发送时刻的快照。
 
 ### `AirwayIM::Credentials`（签名与验签工具）
 
@@ -208,9 +234,9 @@ I/O。对真实后端栈（backend :1905 / internal :1906，见仓库根 README�
 
 ## 协议参考
 
-- API 契约：[`deps/im/docs/api/openapi.md`](../../deps/im/docs/api/openapi.md)
-- 凭证签发：[`deps/im/docs/design/identity.md`](../../deps/im/docs/design/identity.md)
-- 管理后台：[`deps/im/docs/api/admin.md`](../../deps/im/docs/api/admin.md)
+- API 契约：[`deps/im/docs/api/openapi.md`](../../../deps/im/docs/api/openapi.md)
+- 凭证签发：[`deps/im/docs/design/identity.md`](../../../deps/im/docs/design/identity.md)
+- 管理后台：[`deps/im/docs/api/admin.md`](../../../deps/im/docs/api/admin.md)
 
 ---
 
