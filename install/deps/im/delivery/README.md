@@ -23,7 +23,7 @@ synchronization API, not through this worker.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DELIVERY_ADDR` | `:1920` | Listen address |
-| `BACKEND_URL` | `http://127.0.0.1:1905` | Backend base URL (outbox + ack) |
+| `BACKEND_URL` | `http://127.0.0.1:1906` | Backend base URL (outbox + ack) |
 | `GATEWAY_URL` | `http://127.0.0.1:1910` | Gateway base URL (delivery push) |
 | `IM_INTERNAL_SECRET` | — | Shared secret for backend/gateway internal endpoints; required |
 | `DELIVERY_POLL_INTERVAL_MS` | `500` | Outbox polling interval (minimum 100) |
