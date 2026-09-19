@@ -31,7 +31,7 @@ type createConversationMessageRequest struct {
 }
 
 type senderResponse struct {
-	ID        int64   `db:"sender_id" json:"id"`
+	UUID      string  `db:"sender_uuid" json:"uuid"`
 	Username  string  `db:"username" json:"username"`
 	Nickname  *string `db:"nickname" json:"nickname"`
 	AvatarURL *string `db:"avatar_url" json:"avatar_url"`
@@ -50,7 +50,7 @@ type messageResponse struct {
 type messageRow struct {
 	ID             string    `db:"id"`
 	ConversationID string    `db:"conversation_id"`
-	SenderID       int64     `db:"sender_id"`
+	SenderUUID     string    `db:"sender_uuid"`
 	Username       string    `db:"username"`
 	Nickname       *string   `db:"nickname"`
 	AvatarURL      *string   `db:"avatar_url"`
@@ -172,11 +172,11 @@ func createMessage(c *gin.Context, user *models.User, request createMessageReque
 				return err
 			}
 		}
-		var targets []int64
-		if err := tx.Select(&targets, tx.Rebind("SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL"), request.ConversationID); err != nil {
+		var targets []string
+		if err := tx.Select(&targets, tx.Rebind("SELECT u.uuid FROM conversation_members cm JOIN users u ON u.id = cm.user_id WHERE cm.conversation_id = ? AND cm.left_at IS NULL"), request.ConversationID); err != nil {
 			return err
 		}
-		payload, err := json.Marshal(gin.H{"event_id": eventID, "event": "message.created", "message_id": messageID, "conversation_id": request.ConversationID, "sequence": sequence, "targets": gin.H{"user_ids": targets}})
+		payload, err := json.Marshal(gin.H{"event_id": eventID, "event": "message.created", "message_id": messageID, "conversation_id": request.ConversationID, "sequence": sequence, "targets": gin.H{"user_uuids": targets}})
 		if err != nil {
 			return err
 		}
@@ -191,7 +191,7 @@ func createMessage(c *gin.Context, user *models.User, request createMessageReque
 		respondError(c, http.StatusInternalServerError, 10000, "Could not create message")
 		return
 	}
-	respond(c, http.StatusCreated, messageResponse{ID: messageID, ConversationID: request.ConversationID, Sender: senderResponse{ID: user.ID, Username: user.Username, Nickname: user.Nickname, AvatarURL: user.AvatarURL}, Content: request.Content, ContentType: request.ContentType, CreatedAt: now, Sequence: sequence})
+	respond(c, http.StatusCreated, messageResponse{ID: messageID, ConversationID: request.ConversationID, Sender: senderResponse{UUID: user.UUID, Username: user.Username, Nickname: user.Nickname, AvatarURL: user.AvatarURL}, Content: request.Content, ContentType: request.ContentType, CreatedAt: now, Sequence: sequence})
 }
 
 func ListMessages(c *gin.Context) {
@@ -210,7 +210,7 @@ func ListMessages(c *gin.Context) {
 	if limit < 1 || limit > 200 {
 		limit = 100
 	}
-	query := "SELECT m.id, m.conversation_id, m.sender_id, u.username, u.nickname, u.avatar_url, m.content, m.content_type, m.created_at, m.sequence, m.is_illegal FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.conversation_id = ? AND m.sequence > ? ORDER BY m.sequence ASC LIMIT ?"
+	query := "SELECT m.id, m.conversation_id, u.uuid AS sender_uuid, u.username, u.nickname, u.avatar_url, m.content, m.content_type, m.created_at, m.sequence, m.is_illegal FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.conversation_id = ? AND m.sequence > ? ORDER BY m.sequence ASC LIMIT ?"
 	var rows []messageRow
 	db := repo.CurrentDB()
 	if err := db.Select(&rows, db.Rebind(query), conversationID, after, limit); err != nil {
@@ -229,7 +229,7 @@ func (row messageRow) response() messageResponse {
 	if row.IsIllegal {
 		content = "***"
 	}
-	return messageResponse{ID: row.ID, ConversationID: row.ConversationID, Sender: senderResponse{ID: row.SenderID, Username: row.Username, Nickname: row.Nickname, AvatarURL: row.AvatarURL}, Content: content, ContentType: row.ContentType, CreatedAt: row.CreatedAt, Sequence: row.Sequence}
+	return messageResponse{ID: row.ID, ConversationID: row.ConversationID, Sender: senderResponse{UUID: row.SenderUUID, Username: row.Username, Nickname: row.Nickname, AvatarURL: row.AvatarURL}, Content: content, ContentType: row.ContentType, CreatedAt: row.CreatedAt, Sequence: row.Sequence}
 }
 
 func activeMember(db *sqlx.DB, conversationID string, userID int64) (bool, error) {
@@ -257,7 +257,7 @@ func lookupIdempotency(db *sqlx.DB, userID int64, key string) (string, string, b
 }
 
 func loadMessage(db *sqlx.DB, messageID string) (*messageResponse, error) {
-	query := "SELECT m.id, m.conversation_id, m.sender_id, u.username, u.nickname, u.avatar_url, m.content, m.content_type, m.created_at, m.sequence, m.is_illegal FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = ?"
+	query := "SELECT m.id, m.conversation_id, u.uuid AS sender_uuid, u.username, u.nickname, u.avatar_url, m.content, m.content_type, m.created_at, m.sequence, m.is_illegal FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = ?"
 	var row messageRow
 	if err := db.Get(&row, db.Rebind(query), messageID); err != nil {
 		return nil, err

@@ -32,9 +32,9 @@ type userStats struct {
 }
 
 type onlineStatus struct {
-	Available bool    `json:"available"`
-	Error     *string `json:"error"`
-	UserIDs   []int64 `json:"user_ids"`
+	Available bool     `json:"available"`
+	Error     *string  `json:"error"`
+	UserUUIDs []string `json:"user_uuids"`
 }
 
 type outboxStats struct {
@@ -63,11 +63,11 @@ func Status(c *gin.Context) {
 	adminOK(c, status)
 }
 
-// fetchOnline asks the gateway for its currently connected user IDs. With
+// fetchOnline asks the gateway for its currently connected user uuids. With
 // multiple gateway instances only the configured one is queried; the caller
 // merges per-instance lists.
 func fetchOnline(ctx context.Context) onlineStatus {
-	result := onlineStatus{UserIDs: []int64{}}
+	result := onlineStatus{UserUUIDs: []string{}}
 	endpoint := strings.TrimRight(gatewayBaseURL(), "/") + "/internal/v1/online"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -83,21 +83,21 @@ func fetchOnline(ctx context.Context) onlineStatus {
 		return unavailableOnline(fmt.Errorf("online endpoint returned %s", response.Status))
 	}
 	var body struct {
-		UserIDs []int64 `json:"user_ids"`
+		UserUUIDs []string `json:"user_uuids"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		return unavailableOnline(err)
 	}
 	result.Available = true
-	if body.UserIDs != nil {
-		result.UserIDs = body.UserIDs
+	if body.UserUUIDs != nil {
+		result.UserUUIDs = body.UserUUIDs
 	}
 	return result
 }
 
 func unavailableOnline(err error) onlineStatus {
 	message := err.Error()
-	return onlineStatus{Available: false, Error: &message, UserIDs: []int64{}}
+	return onlineStatus{Available: false, Error: &message, UserUUIDs: []string{}}
 }
 
 func loadDatabaseStatus() (systemStatus, error) {

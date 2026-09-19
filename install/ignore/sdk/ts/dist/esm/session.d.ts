@@ -29,12 +29,12 @@ export interface AirwayIMOptions {
 }
 export interface MembersAddedInfo {
     conversationId: string;
-    addedUserIds: number[];
+    addedUserUuids: string[];
     event: GatewayEvent;
 }
 export interface MembersRemovedInfo {
     conversationId: string;
-    removedUserId: number;
+    removedUserUuid: string;
     event: GatewayEvent;
 }
 export interface SessionEvents {

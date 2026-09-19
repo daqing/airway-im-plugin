@@ -54,7 +54,7 @@ func Authenticate(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": 10001, "data": nil, "message": "Invalid bearer token"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"user_id": user.ID}, "message": nil})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"user_uuid": user.UUID}, "message": nil})
 }
 
 // IssueCredential mints a client credential for a host application's user.

@@ -118,19 +118,19 @@ class AirwayIM {
                     .catch((err) => this.emit("error", err));
                 break;
             case "conversation.member_added":
-                if (event.added_user_ids?.length) {
+                if (event.added_user_uuids?.length) {
                     this.emit("members.added", {
                         conversationId: event.conversation_id,
-                        addedUserIds: event.added_user_ids,
+                        addedUserUuids: event.added_user_uuids,
                         event,
                     });
                 }
                 break;
             case "conversation.member_removed":
-                if (event.removed_user_id !== undefined) {
+                if (event.removed_user_uuid !== undefined) {
                     this.emit("members.removed", {
                         conversationId: event.conversation_id,
-                        removedUserId: event.removed_user_id,
+                        removedUserUuid: event.removed_user_uuid,
                         event,
                     });
                 }

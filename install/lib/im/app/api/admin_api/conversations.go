@@ -18,7 +18,7 @@ type adminConversation struct {
 	Kind            string    `db:"kind" json:"kind"`
 	Title           *string   `db:"title" json:"title"`
 	AvatarURL       *string   `db:"avatar_url" json:"avatar_url"`
-	CreatedBy       int64     `db:"created_by" json:"created_by"`
+	CreatedBy       string    `db:"created_by" json:"created_by"`
 	CreatorUsername string    `db:"creator_username" json:"creator_username"`
 	MemberCount     int64     `db:"member_count" json:"member_count"`
 	MessageCount    int64     `db:"message_count" json:"message_count"`
@@ -30,7 +30,7 @@ type adminConversation struct {
 type adminMessage struct {
 	ID              string     `db:"id" json:"id"`
 	ConversationID  string     `db:"conversation_id" json:"conversation_id"`
-	SenderID        int64      `db:"sender_id" json:"sender_id"`
+	SenderUUID      string     `db:"sender_uuid" json:"sender_uuid"`
 	SenderUsername  string     `db:"sender_username" json:"sender_username"`
 	SenderNickname  *string    `db:"sender_nickname" json:"sender_nickname"`
 	SenderAvatarURL *string    `db:"sender_avatar_url" json:"sender_avatar_url"`
@@ -45,7 +45,7 @@ type adminMessage struct {
 func ListConversations(c *gin.Context) {
 	db := repo.CurrentDB()
 	query := `
-		SELECT c.id, c.kind, c.title, c.avatar_url, c.created_by,
+		SELECT c.id, c.kind, c.title, c.avatar_url, creator.uuid AS created_by,
 		       creator.username AS creator_username,
 		       (SELECT COUNT(*) FROM conversation_members cm
 		        WHERE cm.conversation_id = c.id AND cm.left_at IS NULL) AS member_count,
@@ -84,7 +84,8 @@ func ListConversationMessages(c *gin.Context) {
 	}
 
 	query := `
-		SELECT m.id, m.conversation_id, m.sender_id,
+		SELECT m.id, m.conversation_id,
+		       sender.uuid AS sender_uuid,
 		       sender.username AS sender_username,
 		       sender.nickname AS sender_nickname,
 		       sender.avatar_url AS sender_avatar_url,
@@ -136,8 +137,8 @@ func MarkMessageIllegal(c *gin.Context) {
 		if affected, _ := result.RowsAffected(); affected == 0 {
 			return nil
 		}
-		var targets []int64
-		if err := tx.Select(&targets, tx.Rebind("SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL"), message.ConversationID); err != nil {
+		var targets []string
+		if err := tx.Select(&targets, tx.Rebind("SELECT u.uuid FROM conversation_members cm JOIN users u ON u.id = cm.user_id WHERE cm.conversation_id = ? AND cm.left_at IS NULL"), message.ConversationID); err != nil {
 			return err
 		}
 		payload, err := json.Marshal(gin.H{
@@ -146,7 +147,7 @@ func MarkMessageIllegal(c *gin.Context) {
 			"message_id":      message.ID,
 			"conversation_id": message.ConversationID,
 			"sequence":        message.Sequence,
-			"targets":         gin.H{"user_ids": targets},
+			"targets":         gin.H{"user_uuids": targets},
 		})
 		if err != nil {
 			return err
@@ -166,7 +167,8 @@ func MarkMessageIllegal(c *gin.Context) {
 
 func loadAdminMessage(db *sqlx.DB, messageID string) (*adminMessage, error) {
 	query := `
-		SELECT m.id, m.conversation_id, m.sender_id,
+		SELECT m.id, m.conversation_id,
+		       sender.uuid AS sender_uuid,
 		       sender.username AS sender_username,
 		       sender.nickname AS sender_nickname,
 		       sender.avatar_url AS sender_avatar_url,

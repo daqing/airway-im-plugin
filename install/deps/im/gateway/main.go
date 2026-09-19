@@ -51,15 +51,15 @@ type metrics struct {
 
 type hub struct {
 	mu      sync.RWMutex
-	users   map[int64]map[*client]struct{}
+	users   map[string]map[*client]struct{}
 	metrics metrics
 }
 
 type client struct {
-	conn   *websocket.Conn
-	send   chan []byte
-	userID int64
-	close  sync.Once
+	conn     *websocket.Conn
+	send     chan []byte
+	userUUID string
+	close    sync.Once
 }
 
 type server struct {
@@ -81,7 +81,7 @@ type envelope struct {
 
 func main() {
 	cfg := loadConfig()
-	s := &server{config: cfg, hub: &hub{users: make(map[int64]map[*client]struct{})}, client: &http.Client{Timeout: 5 * time.Second}}
+	s := &server{config: cfg, hub: &hub{users: make(map[string]map[*client]struct{})}, client: &http.Client{Timeout: 5 * time.Second}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.websocket)
 	mux.HandleFunc("/internal/v1/deliver", s.deliver)
@@ -159,7 +159,7 @@ func (s *server) readLoop(c *client) {
 			s.sendResponse(c, envelope{Code: 10003, Data: nil, Message: "Invalid command"})
 			continue
 		}
-		if c.userID == 0 {
+		if c.userUUID == "" {
 			if cmd.Cmd != "auth" || len(cmd.Opts) != 1 {
 				s.sendResponse(c, envelope{Code: 10002, Data: nil, Message: "Authentication required"})
 				_ = c.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "authentication required"), time.Now().Add(writeWait))
@@ -170,12 +170,12 @@ func (s *server) readLoop(c *client) {
 				s.authFailure(c)
 				return
 			}
-			userID, err := s.authenticate(rContext(c), token)
-			if err != nil || userID == 0 {
+			userUUID, err := s.authenticate(rContext(c), token)
+			if err != nil || userUUID == "" {
 				s.authFailure(c)
 				return
 			}
-			c.userID = userID
+			c.userUUID = userUUID
 			s.hub.add(c)
 			s.hub.metrics.authenticated.Add(1)
 			_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -208,24 +208,24 @@ func (s *server) writeLoop(c *client) {
 	}
 }
 
-func (s *server) authenticate(ctx context.Context, token string) (int64, error) {
+func (s *server) authenticate(ctx context.Context, token string) (string, error) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.config.backendURL+"/internal/v1/auth", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-IM-Internal-Secret", s.config.internalSecret)
 	response, err := s.client.Do(req)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	defer response.Body.Close()
 	var body struct {
 		Data struct {
-			UserID int64 `json:"user_id"`
+			UserUUID string `json:"user_uuid"`
 		} `json:"data"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&body) != nil {
-		return 0, errors.New("invalid token")
+		return "", errors.New("invalid token")
 	}
-	return body.Data.UserID, nil
+	return body.Data.UserUUID, nil
 }
 
 func (s *server) deliver(w http.ResponseWriter, r *http.Request) {
@@ -242,19 +242,19 @@ func (s *server) deliver(w http.ResponseWriter, r *http.Request) {
 	}
 	var routing struct {
 		Targets struct {
-			UserIDs []int64 `json:"user_ids"`
+			UserUUIDs []string `json:"user_uuids"`
 		} `json:"targets"`
 	}
 	if json.Unmarshal(event.Payload, &routing) != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
-	delivered := s.hub.deliver(routing.Targets.UserIDs, event.Payload)
+	delivered := s.hub.deliver(routing.Targets.UserUUIDs, event.Payload)
 	s.hub.metrics.delivered.Add(int64(delivered))
 	writeJSON(w, http.StatusOK, map[string]int{"delivered": delivered})
 }
 
-// online reports the user IDs with at least one authenticated connection on
+// online reports the user uuids with at least one authenticated connection on
 // this instance. It is used by the backend admin status; across multiple
 // gateway instances the per-instance lists must be merged by the caller.
 func (s *server) online(w http.ResponseWriter, r *http.Request) {
@@ -263,13 +263,13 @@ func (s *server) online(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.hub.mu.RLock()
-	userIDs := make([]int64, 0, len(s.hub.users))
-	for userID := range s.hub.users {
-		userIDs = append(userIDs, userID)
+	userUUIDs := make([]string, 0, len(s.hub.users))
+	for userUUID := range s.hub.users {
+		userUUIDs = append(userUUIDs, userUUID)
 	}
 	s.hub.mu.RUnlock()
-	sort.Slice(userIDs, func(i, j int) bool { return userIDs[i] < userIDs[j] })
-	writeJSON(w, http.StatusOK, map[string]any{"user_ids": userIDs})
+	sort.Strings(userUUIDs)
+	writeJSON(w, http.StatusOK, map[string]any{"user_uuids": userUUIDs})
 }
 
 // kick drops all local connections of a user (credential revocation). With
@@ -282,30 +282,30 @@ func (s *server) kick(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		UserID int64 `json:"user_id"`
+		UserUUID string `json:"user_uuid"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxFrameBytes)).Decode(&body); err != nil || body.UserID == 0 {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxFrameBytes)).Decode(&body); err != nil || body.UserUUID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid body"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"kicked": s.hub.kick(body.UserID)})
+	writeJSON(w, http.StatusOK, map[string]int{"kicked": s.hub.kick(body.UserUUID)})
 }
 
 func (h *hub) add(c *client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.users[c.userID] == nil {
-		h.users[c.userID] = make(map[*client]struct{})
+	if h.users[c.userUUID] == nil {
+		h.users[c.userUUID] = make(map[*client]struct{})
 	}
-	h.users[c.userID][c] = struct{}{}
+	h.users[c.userUUID][c] = struct{}{}
 }
 
 // kick drops every connection of a user whose credentials were revoked. The
 // read loops clean the hub entry up when the closed sockets error out.
-func (h *hub) kick(userID int64) int {
+func (h *hub) kick(userUUID string) int {
 	h.mu.RLock()
-	clients := make([]*client, 0, len(h.users[userID]))
-	for c := range h.users[userID] {
+	clients := make([]*client, 0, len(h.users[userUUID]))
+	for c := range h.users[userUUID] {
 		clients = append(clients, c)
 	}
 	h.mu.RUnlock()
@@ -319,10 +319,10 @@ func (h *hub) kick(userID int64) int {
 func (s *server) remove(c *client) {
 	c.close.Do(func() {
 		s.hub.mu.Lock()
-		if connections := s.hub.users[c.userID]; connections != nil {
+		if connections := s.hub.users[c.userUUID]; connections != nil {
 			delete(connections, c)
 			if len(connections) == 0 {
-				delete(s.hub.users, c.userID)
+				delete(s.hub.users, c.userUUID)
 			}
 		}
 		s.hub.mu.Unlock()
@@ -331,11 +331,11 @@ func (s *server) remove(c *client) {
 	})
 }
 
-func (h *hub) deliver(userIDs []int64, payload []byte) int {
+func (h *hub) deliver(userUUIDs []string, payload []byte) int {
 	h.mu.RLock()
 	clients := make(map[*client]struct{})
-	for _, userID := range userIDs {
-		for c := range h.users[userID] {
+	for _, userUUID := range userUUIDs {
+		for c := range h.users[userUUID] {
 			clients[c] = struct{}{}
 		}
 	}

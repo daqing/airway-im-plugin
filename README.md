@@ -137,7 +137,7 @@ Design contracts:
 - `/admin/api` with session login (`IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD`),
   12-hour in-memory sessions.
 - System status aggregating database counters plus live gateway/delivery
-  metrics and online user IDs; user listing with last-seen timestamps.
+  metrics and online user uuids; user listing with last-seen timestamps.
 - Credential revocation: `POST /admin/api/users/:uuid/revoke` bumps the
   user's `token_version` (invalidating backend-minted credentials) and
   kicks live gateway connections.

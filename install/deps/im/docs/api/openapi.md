@@ -118,7 +118,7 @@ paths:
                     kind: group
                     title: Airway IM Backend
                     avatar_url: null
-                    created_by: 1
+                    created_by: user-1
                     created_at: '2026-07-24T08:00:00Z'
                     updated_at: '2026-07-24T09:30:00Z'
                 message: null
@@ -250,14 +250,12 @@ paths:
                   conversation_uuid: 01J2Q7D4N5R8TK6VD3SZ1H0Y9M
                   type: group
                   members:
-                    - id: 1
-                      uuid: user-1
+                    - uuid: user-1
                       username: owner
                       nickname: Owner
                       avatar_url: https://avatars.example.com/owner.png
                       role: owner
-                    - id: 2
-                      uuid: user-2
+                    - uuid: user-2
                       username: member
                       nickname: null
                       avatar_url: null
@@ -941,11 +939,8 @@ components:
     User:
       type: object
       additionalProperties: false
-      required: [id, uuid, username, nickname, avatar_url, email, last_seen_at, created_at, updated_at]
+      required: [uuid, username, nickname, avatar_url, email, last_seen_at, created_at, updated_at]
       properties:
-        id:
-          type: integer
-          format: int64
         uuid:
           type: string
           description: Stable, unique identity assigned by the Airway application.
@@ -973,11 +968,8 @@ components:
     AdminUser:
       type: object
       additionalProperties: false
-      required: [id, uuid, username, nickname, avatar_url, email, last_seen_at, token_version, created_at]
+      required: [uuid, username, nickname, avatar_url, email, last_seen_at, token_version, created_at]
       properties:
-        id:
-          type: integer
-          format: int64
         uuid:
           type: string
           description: Stable, unique identity assigned by the Airway application.
@@ -1006,11 +998,11 @@ components:
     Sender:
       type: object
       additionalProperties: false
-      required: [id, username, nickname, avatar_url]
+      required: [uuid, username, nickname, avatar_url]
       properties:
-        id:
-          type: integer
-          format: int64
+        uuid:
+          type: string
+          description: Stable, unique identity assigned by the Airway application.
         username:
           type: string
         nickname:
@@ -1035,8 +1027,8 @@ components:
           type: [string, 'null']
           format: uri
         created_by:
-          type: integer
-          format: int64
+          type: string
+          description: Stable uuid of the user who created the conversation.
         created_at:
           type: string
           format: date-time
@@ -1047,11 +1039,8 @@ components:
     ConversationMember:
       type: object
       additionalProperties: false
-      required: [id, uuid, username, nickname, avatar_url, role]
+      required: [uuid, username, nickname, avatar_url, role]
       properties:
-        id:
-          type: integer
-          format: int64
         uuid:
           type: string
           description: Stable, unique identity assigned by the Airway application.
@@ -1145,8 +1134,8 @@ components:
           type: [string, 'null']
           format: uri
         created_by:
-          type: integer
-          format: int64
+          type: string
+          description: Stable uuid of the user who created the conversation.
         creator_username:
           type: string
         member_count:
@@ -1173,7 +1162,7 @@ components:
       required:
         - id
         - conversation_id
-        - sender_id
+        - sender_uuid
         - sender_username
         - sender_nickname
         - sender_avatar_url
@@ -1188,9 +1177,9 @@ components:
           $ref: '#/components/schemas/ULID'
         conversation_id:
           $ref: '#/components/schemas/ULID'
-        sender_id:
-          type: integer
-          format: int64
+        sender_uuid:
+          type: string
+          description: Stable, unique identity assigned by the Airway application.
         sender_username:
           type: string
         sender_nickname:
@@ -1482,7 +1471,7 @@ socket. A committed message is delivered at least once as a server event:
   "message_id": "01J2Q8A4FQ8NA8R6YDJ2M98K3Q",
   "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
   "sequence": 1042,
-  "targets": {"user_ids":[1,2]}
+  "targets": {"user_uuids":["user-1","user-2"]}
 }
 ```
 
@@ -1500,8 +1489,8 @@ just added:
   "event_id": "01J2Q8A4FQ8NA8R6YDJ2M98K3R",
   "event": "conversation.member_added",
   "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
-  "added_user_ids": [4, 5],
-  "targets": {"user_ids":[1,2,4,5]}
+  "added_user_uuids": ["user-4", "user-5"],
+  "targets": {"user_uuids":["user-1","user-2","user-4","user-5"]}
 }
 ```
 
@@ -1517,8 +1506,8 @@ the removed user (so their client learns it was kicked):
   "event_id": "01J2Q8A4FQ8NA8R6YDJ2M98K3S",
   "event": "conversation.member_removed",
   "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
-  "removed_user_id": 5,
-  "targets": {"user_ids":[1,2,5]}
+  "removed_user_uuid": "user-5",
+  "targets": {"user_uuids":["user-1","user-2","user-5"]}
 }
 ```
 

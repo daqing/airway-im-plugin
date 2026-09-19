@@ -2,7 +2,6 @@
 // See deps/im/docs/api/openapi.md for the contract this implements.
 
 export interface User {
-  id: number;
   uuid: string;
   username: string;
   nickname: string | null;
@@ -18,13 +17,12 @@ export interface Conversation {
   kind: "direct" | "group";
   title: string | null;
   avatar_url: string | null;
-  created_by: number;
+  created_by: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface ConversationMember {
-  id: number;
   uuid: string;
   username: string;
   nickname: string | null;
@@ -39,7 +37,7 @@ export interface ConversationDetails {
 }
 
 export interface Sender {
-  id: number;
+  uuid: string;
   username: string;
   nickname: string | null;
   avatar_url: string | null;
@@ -66,7 +64,7 @@ export interface AdminConversation {
   kind: "group";
   title: string | null;
   avatar_url: string | null;
-  created_by: number;
+  created_by: string;
   creator_username: string;
   member_count: number;
   message_count: number;

@@ -142,7 +142,7 @@ func TestCreateGroup(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Code != 0 || body.Data.Kind != "group" || body.Data.Title == nil || *body.Data.Title != "Backend Team" || body.Data.CreatedBy != 1 {
+	if body.Code != 0 || body.Data.Kind != "group" || body.Data.Title == nil || *body.Data.Title != "Backend Team" || body.Data.CreatedBy != "uuid-owner" {
 		t.Fatalf("unexpected response: %#v", body)
 	}
 	if len(body.Data.ID) != 26 {
@@ -332,8 +332,8 @@ func TestGetConversationReturnsTypeAndActiveMembers(t *testing.T) {
 		t.Fatalf("unexpected conversation: %#v", body)
 	}
 	if len(body.Data.Members) != 2 ||
-		body.Data.Members[0].ID != 1 || body.Data.Members[0].UUID != "uuid-owner" || body.Data.Members[0].Role != "owner" ||
-		body.Data.Members[1].ID != 2 || body.Data.Members[1].UUID != "uuid-alice" || body.Data.Members[1].Role != "member" {
+		body.Data.Members[0].UUID != "uuid-owner" || body.Data.Members[0].Role != "owner" ||
+		body.Data.Members[1].UUID != "uuid-alice" || body.Data.Members[1].Role != "member" {
 		t.Fatalf("unexpected members: %#v", body.Data.Members)
 	}
 }
@@ -429,7 +429,7 @@ func TestCreateConversationMessage(t *testing.T) {
 	}
 	if body.Code != 0 || body.Data.ConversationID != conversationUUID ||
 		body.Data.Content != "Hello group" || body.Data.ContentType != "text/plain" ||
-		body.Data.Sequence != 1 || body.Data.Sender.ID != 1 {
+		body.Data.Sequence != 1 || body.Data.Sender.UUID != "uuid-owner" {
 		t.Fatalf("unexpected message: %#v", body)
 	}
 
@@ -525,7 +525,7 @@ func TestListMessagesAfterSequenceIncludesSenderAndContent(t *testing.T) {
 		t.Fatalf("unexpected response: %#v", body)
 	}
 	if body.Data[0].Sequence != 2 || body.Data[0].Content != "Second" ||
-		body.Data[0].Sender.ID != 2 || body.Data[0].Sender.Username != "alice" ||
+		body.Data[0].Sender.UUID != "uuid-alice" || body.Data[0].Sender.Username != "alice" ||
 		body.Data[1].Sequence != 3 || body.Data[1].Content != "Third" {
 		t.Fatalf("unexpected messages: %#v", body.Data)
 	}

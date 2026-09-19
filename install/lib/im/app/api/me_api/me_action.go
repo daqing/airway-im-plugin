@@ -10,6 +10,8 @@ import (
 const invalidBearerTokenCode = 10001
 
 // MeAction returns the user identified by the client's signed credential.
+// uuid is the identity clients integrate with; the internal numeric row id is
+// never exposed.
 func MeAction(c *gin.Context) {
 	user, err := auth.UserFromHeader(c.GetHeader("Authorization"))
 	if err != nil {
@@ -26,8 +28,17 @@ func MeAction(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"data":    user,
+		"code": 0,
+		"data": gin.H{
+			"uuid":         user.UUID,
+			"username":     user.Username,
+			"nickname":     user.Nickname,
+			"avatar_url":   user.AvatarURL,
+			"email":        user.Email,
+			"last_seen_at": user.LastSeenAt,
+			"created_at":   user.CreatedAt,
+			"updated_at":   user.UpdatedAt,
+		},
 		"message": nil,
 	})
 }

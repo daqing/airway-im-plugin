@@ -109,7 +109,7 @@ async function main(): Promise<void> {
   const me = await client.me();
 
   if (args.command === "groups") {
-    await listMyGroups(client, me.id);
+    await listMyGroups(client, me.uuid);
     return;
   }
 
@@ -147,11 +147,11 @@ async function main(): Promise<void> {
     const groups = await client.listGroups();
     if (groups.length === 0) {
       // First run: offer to create a group interactively instead of failing.
-      console.log(`logged in as ${me.username} (id ${me.id}) — you have no groups yet.`);
+      console.log(`logged in as ${me.username} (uuid ${me.uuid}) — you have no groups yet.`);
       console.log("Group members are user uuids; each member's uuid is shown in the member list.");
       const created = await promptCreateGroup(client);
       if (!created) {
-        console.error('aborted. Use --create-group "Title" --members <id>[,<id>...] next time.');
+        console.error('aborted. Use --create-group "Title" --members <uuid>[,<uuid>...] next time.');
         process.exit(2);
       }
       conversationId = created.id;
@@ -173,13 +173,13 @@ async function main(): Promise<void> {
   // Message state: dedupe by message_id, order by sequence.
   const seenMessages = new Set<string>();
   let lastSequence = 0;
-  const ui = new ChatUI({ title, selfName: me.nickname ?? me.username, selfId: me.id });
+  const ui = new ChatUI({ title, selfName: me.nickname ?? me.username, selfUuid: me.uuid });
 
   const append = (msg: ChatMessage): void => {
     if (seenMessages.has(msg.id)) return;
     seenMessages.add(msg.id);
     lastSequence = Math.max(lastSequence, msg.sequence);
-    ui.addMessage(msg, me.id);
+    ui.addMessage(msg, me.uuid);
   };
 
   // Serialize syncs; onEvent and reconnect can trigger them concurrently.
@@ -217,14 +217,14 @@ async function main(): Promise<void> {
           .then((msgs) => { if (msgs[0]) ui.replaceMessage(msgs[0]); })
           .catch(() => {});
       } else if (event.event === "conversation.member_added") {
-        const added = (event.added_user_ids ?? []).join(", ");
+        const added = (event.added_user_uuids ?? []).join(", ");
         ui.addSystem(`member(s) ${added} joined the group`);
         refreshTitle();
       } else if (event.event === "conversation.member_removed") {
-        if (event.removed_user_id === me.id) {
+        if (event.removed_user_uuid === me.uuid) {
           ui.addSystem("you were removed from this group — sending will fail");
         } else {
-          ui.addSystem(`member ${event.removed_user_id} was removed`);
+          ui.addSystem(`member ${event.removed_user_uuid} was removed`);
         }
         refreshTitle();
       }
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
       .catch((err: unknown) => ui.addSystem(`send failed: ${String(err)}`));
   });
 
-  ui.addSystem(`logged in as ${me.username} (id ${me.id}, uuid ${me.uuid})`);
+  ui.addSystem(`logged in as ${me.username} (uuid ${me.uuid})`);
   for (const msg of history) append(msg);
   if (history.length > 0) ui.addSystem(`loaded ${history.length} earlier message(s)`);
   gateway.connect();
@@ -264,15 +264,15 @@ function parseMemberUuids(raw: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-async function listMyGroups(client: IMClient, selfId: number): Promise<void> {
+async function listMyGroups(client: IMClient, selfUuid: string): Promise<void> {
   const groups = await client.listGroups();
   if (groups.length === 0) {
-    console.log("you have no groups yet — create one with --create-group \"Title\" --members <id>[,<id>...]");
+    console.log("you have no groups yet — create one with --create-group \"Title\" --members <uuid>[,<uuid>...]");
     return;
   }
   const rows = await Promise.all(groups.map(async (g) => {
     const details = await client.getConversation(g.id);
-    const me = details.members.find((m) => m.id === selfId);
+    const me = details.members.find((m) => m.uuid === selfUuid);
     return { group: g, members: details.members.length, role: me?.role ?? "?" };
   }));
   console.log(`${rows.length} group(s):`);

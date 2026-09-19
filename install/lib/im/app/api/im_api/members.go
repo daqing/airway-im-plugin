@@ -77,8 +77,10 @@ func AddMembers(c *gin.Context) {
 		return
 	}
 	memberIDs := make([]int64, 0, len(resolved))
+	uuidByID := make(map[int64]string, len(resolved))
 	for _, member := range resolved {
 		memberIDs = append(memberIDs, member.ID)
+		uuidByID[member.ID] = member.UUID
 	}
 
 	eventID, err := utils.NewULID()
@@ -87,8 +89,8 @@ func AddMembers(c *gin.Context) {
 		return
 	}
 	now := time.Now().UTC()
-	added := make([]int64, 0, len(memberIDs))
-	var targets []int64
+	added := make([]string, 0, len(memberIDs))
+	var targets []string
 	err = repo.Tx(db, func(tx *sqlx.Tx) error {
 		for _, memberID := range memberIDs {
 			var leftAt *time.Time
@@ -98,14 +100,14 @@ func AddMembers(c *gin.Context) {
 				if _, err := tx.Exec(tx.Rebind("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)"), conversationUUID, memberID, now); err != nil {
 					return err
 				}
-				added = append(added, memberID)
+				added = append(added, uuidByID[memberID])
 			case lookupErr != nil:
 				return lookupErr
 			case leftAt != nil:
 				if _, err := tx.Exec(tx.Rebind("UPDATE conversation_members SET left_at = NULL, joined_at = ?, role = 'member' WHERE conversation_id = ? AND user_id = ?"), now, conversationUUID, memberID); err != nil {
 					return err
 				}
-				added = append(added, memberID)
+				added = append(added, uuidByID[memberID])
 			}
 		}
 		if len(added) == 0 {
@@ -114,10 +116,10 @@ func AddMembers(c *gin.Context) {
 		if _, err := tx.Exec(tx.Rebind("UPDATE conversations SET updated_at = ? WHERE id = ?"), now, conversationUUID); err != nil {
 			return err
 		}
-		if err := tx.Select(&targets, tx.Rebind("SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL"), conversationUUID); err != nil {
+		if err := tx.Select(&targets, tx.Rebind("SELECT u.uuid FROM conversation_members cm JOIN users u ON u.id = cm.user_id WHERE cm.conversation_id = ? AND cm.left_at IS NULL"), conversationUUID); err != nil {
 			return err
 		}
-		payload, err := json.Marshal(gin.H{"event_id": eventID, "event": "conversation.member_added", "conversation_id": conversationUUID, "added_user_ids": added, "targets": gin.H{"user_ids": targets}})
+		payload, err := json.Marshal(gin.H{"event_id": eventID, "event": "conversation.member_added", "conversation_id": conversationUUID, "added_user_uuids": added, "targets": gin.H{"user_uuids": targets}})
 		if err != nil {
 			return err
 		}
@@ -144,7 +146,7 @@ func AddMembers(c *gin.Context) {
 func loadActiveMembers(db *sqlx.DB, conversationUUID string) ([]conversationMemberResponse, error) {
 	members := make([]conversationMemberResponse, 0)
 	query := `
-		SELECT u.id, u.uuid, u.username, u.nickname, u.avatar_url, cm.role
+		SELECT u.uuid, u.username, u.nickname, u.avatar_url, cm.role
 		FROM conversation_members cm
 		JOIN users u ON u.id = cm.user_id
 		WHERE cm.conversation_id = ? AND cm.left_at IS NULL
@@ -279,12 +281,12 @@ func RemoveMember(c *gin.Context) {
 			if _, err := tx.Exec(tx.Rebind("UPDATE conversations SET updated_at = ? WHERE id = ?"), now, conversationUUID); err != nil {
 				return err
 			}
-			var targets []int64
-			if err := tx.Select(&targets, tx.Rebind("SELECT user_id FROM conversation_members WHERE conversation_id = ? AND left_at IS NULL"), conversationUUID); err != nil {
+			var targets []string
+			if err := tx.Select(&targets, tx.Rebind("SELECT u.uuid FROM conversation_members cm JOIN users u ON u.id = cm.user_id WHERE cm.conversation_id = ? AND cm.left_at IS NULL"), conversationUUID); err != nil {
 				return err
 			}
-			targets = append(targets, targetID)
-			payload, err := json.Marshal(gin.H{"event_id": eventID, "event": "conversation.member_removed", "conversation_id": conversationUUID, "removed_user_id": targetID, "targets": gin.H{"user_ids": targets}})
+			targets = append(targets, targetUUID)
+			payload, err := json.Marshal(gin.H{"event_id": eventID, "event": "conversation.member_removed", "conversation_id": conversationUUID, "removed_user_uuid": targetUUID, "targets": gin.H{"user_uuids": targets}})
 			if err != nil {
 				return err
 			}

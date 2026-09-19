@@ -31,13 +31,12 @@ type conversationResponse struct {
 	Kind      string    `db:"kind" json:"kind"`
 	Title     *string   `db:"title" json:"title"`
 	AvatarURL *string   `db:"avatar_url" json:"avatar_url"`
-	CreatedBy int64     `db:"created_by" json:"created_by"`
+	CreatedBy string    `db:"created_by" json:"created_by"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type conversationMemberResponse struct {
-	ID        int64   `db:"id" json:"id"`
 	UUID      string  `db:"uuid" json:"uuid"`
 	Username  string  `db:"username" json:"username"`
 	Nickname  *string `db:"nickname" json:"nickname"`
@@ -107,9 +106,10 @@ func ListConversations(c *gin.Context) {
 
 	db := repo.CurrentDB()
 	query := `
-		SELECT c.id, c.kind, c.title, c.avatar_url, c.created_by, c.created_at, c.updated_at
+		SELECT c.id, c.kind, c.title, c.avatar_url, creator.uuid AS created_by, c.created_at, c.updated_at
 		FROM conversations c
 		JOIN conversation_members cm ON cm.conversation_id = c.id
+		JOIN users creator ON creator.id = c.created_by
 		WHERE cm.user_id = ? AND cm.left_at IS NULL AND c.kind = ?
 		ORDER BY c.updated_at DESC, c.id DESC
 	`
@@ -236,12 +236,12 @@ func createConversation(c *gin.Context, user *models.User, request createConvers
 		respondError(c, http.StatusInternalServerError, 10000, "Could not create conversation")
 		return
 	}
-	respond(c, http.StatusCreated, conversationResponse{ID: id, Kind: request.Kind, Title: request.Title, CreatedBy: user.ID, CreatedAt: now, UpdatedAt: now})
+	respond(c, http.StatusCreated, conversationResponse{ID: id, Kind: request.Kind, Title: request.Title, CreatedBy: user.UUID, CreatedAt: now, UpdatedAt: now})
 }
 
 func findDirect(db *sqlx.DB, first, second int64) (*conversationResponse, error) {
 	low, high := orderedPair(first, second)
-	query := "SELECT c.id, c.kind, c.title, c.avatar_url, c.created_by, c.created_at, c.updated_at FROM conversations c JOIN direct_conversations d ON d.conversation_id = c.id WHERE d.user_id_low = ? AND d.user_id_high = ?"
+	query := "SELECT c.id, c.kind, c.title, c.avatar_url, creator.uuid AS created_by, c.created_at, c.updated_at FROM conversations c JOIN direct_conversations d ON d.conversation_id = c.id JOIN users creator ON creator.id = c.created_by WHERE d.user_id_low = ? AND d.user_id_high = ?"
 	rows, err := db.Queryx(db.Rebind(query), low, high)
 	if err != nil {
 		return nil, err

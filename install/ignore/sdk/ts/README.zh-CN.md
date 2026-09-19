@@ -151,8 +151,8 @@ App({
 | --- | --- | --- |
 | `message` | `(msg, "history"\|"realtime")` | 新消息，有序、去重、自动补洞 |
 | `message.updated` | `(msg)` | 消息被审核屏蔽，content 已是 `***`，用替换渲染 |
-| `members.added` | `{conversationId, addedUserIds, event}` | 群成员加入（含被拉人自己） |
-| `members.removed` | `{conversationId, removedUserId, event}` | 群成员被移出（含被踢者本人收到通知） |
+| `members.added` | `{conversationId, addedUserUuids, event}` | 群成员加入（含被拉人自己） |
+| `members.removed` | `{conversationId, removedUserUuid, event}` | 群成员被移出（含被踢者本人收到通知） |
 | `status` | `ConnectionStatus` | `connecting / authenticating / online / reconnecting / offline / closed` |
 | `error` | `Error` | 网关认证失败、凭证续期失败等 |
 | `event` | 原始 `GatewayEvent` | 所有网关帧；未 `history()` 过的会话消息也在这里 |

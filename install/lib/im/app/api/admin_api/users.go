@@ -9,7 +9,6 @@ import (
 )
 
 type adminUser struct {
-	ID           int64      `db:"id" json:"id"`
 	UUID         string     `db:"uuid" json:"uuid"`
 	Username     string     `db:"username" json:"username"`
 	Nickname     *string    `db:"nickname" json:"nickname"`
@@ -27,7 +26,7 @@ type adminUser struct {
 func ListUsers(c *gin.Context) {
 	db := repo.CurrentDB()
 	var users []adminUser
-	query := "SELECT id, uuid, username, nickname, avatar_url, email, last_seen_at, token_version, created_at FROM users ORDER BY created_at DESC"
+	query := "SELECT uuid, username, nickname, avatar_url, email, last_seen_at, token_version, created_at FROM users ORDER BY created_at DESC"
 	if err := db.Select(&users, query); err != nil {
 		adminError(c, http.StatusInternalServerError, 20000, "Could not load users")
 		return

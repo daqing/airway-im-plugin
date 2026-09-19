@@ -273,12 +273,12 @@ Both conversation types use a common response shape:
   "avatar_url": null,
   "members": [
     {
-      "user_id": 10,
+      "user_uuid": "user-42",
       "role": "member",
       "joined_at": "2026-07-20T10:00:00Z"
     },
     {
-      "user_id": 20,
+      "user_uuid": "user-43",
       "role": "member",
       "joined_at": "2026-07-20T10:00:00Z"
     }

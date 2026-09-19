@@ -83,10 +83,10 @@ func TestIssueCredentialThenAuthenticateRegistersUser(t *testing.T) {
 	}
 	var body struct {
 		Data struct {
-			UserID int64 `json:"user_id"`
+			UserUUID string `json:"user_uuid"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body.Data.UserID != 1 {
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body.Data.UserUUID != "host-7" {
 		t.Fatalf("unexpected auth response: %s, %v", response.Body.String(), err)
 	}
 }

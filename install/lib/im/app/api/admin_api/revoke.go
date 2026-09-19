@@ -31,15 +31,15 @@ func RevokeUserCredentials(c *gin.Context) {
 	adminOK(c, gin.H{
 		"uuid":               user.UUID,
 		"token_version":      user.TokenVersion,
-		"connections_kicked": kickGatewayConnections(user.ID),
+		"connections_kicked": kickGatewayConnections(user.UUID),
 	})
 }
 
 // kickGatewayConnections asks the gateway to drop the user's live
 // connections. It is best-effort: with an unreachable gateway the revocation
 // still stands and the connections die at their next reconnect.
-func kickGatewayConnections(userID int64) int {
-	body, _ := json.Marshal(map[string]int64{"user_id": userID})
+func kickGatewayConnections(userUUID string) int {
+	body, _ := json.Marshal(map[string]string{"user_uuid": userUUID})
 	request, err := http.NewRequest(http.MethodPost, gatewayBaseURL()+"/internal/v1/kick", bytes.NewReader(body))
 	if err != nil {
 		return 0

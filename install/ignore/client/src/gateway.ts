@@ -13,9 +13,9 @@ export interface GatewayEvent {
   message_id?: string;
   conversation_id: string;
   sequence?: number;
-  added_user_ids?: number[];
-  removed_user_id?: number;
-  targets?: { user_ids: number[] };
+  added_user_uuids?: string[];
+  removed_user_uuid?: string;
+  targets?: { user_uuids: string[] };
 }
 
 export type GatewayStatus =

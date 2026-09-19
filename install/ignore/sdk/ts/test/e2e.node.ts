@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   const aliceMe = await alice.me();
   const bobMe = await bob.me();
   const carolMe = await carol.me();
-  ok("me(): profiles resolve", aliceMe.id > 0 && bobMe.id > 0 && carolMe.id > 0);
+  ok("me(): profiles resolve", Boolean(aliceMe.uuid) && Boolean(bobMe.uuid) && Boolean(carolMe.uuid));
 
   // ---- Realtime connect (auth first frame) ----
   const aliceEvents = collect(alice);
@@ -147,7 +147,7 @@ async function main(): Promise<void> {
   const sent = await alice.sendMessage(direct.id, "hello **bob**", {
     contentType: "text/markdown",
   });
-  ok("sendMessage returns stored message", sent.sequence === 1 && sent.sender.id === aliceMe.id);
+  ok("sendMessage returns stored message", sent.sequence === 1 && sent.sender.uuid === aliceMe.uuid);
 
   const received = await waitFor("bob receives direct message in order", () =>
     bobEvents.messages.find((m) => m.id === sent.id),
@@ -251,7 +251,7 @@ async function main(): Promise<void> {
 
   // ---- REST-only instance works without wsUrl ----
   const restOnly = await carol.me();
-  ok("REST-only instance (no wsUrl)", restOnly.id === carolMe.id);
+  ok("REST-only instance (no wsUrl)", restOnly.uuid === carolMe.uuid);
 
   alice.disconnect();
   bob.disconnect();
@@ -279,7 +279,7 @@ async function browserAdapterPhase(): Promise<void> {
     persistSequences: true,
   });
   const bobMe = await bob.me();
-  ok("browserAdapter: me()", bobMe.id > 0);
+  ok("browserAdapter: me()", Boolean(bobMe.uuid));
 
   const bobEvents = collect(bob);
   alice.connect();

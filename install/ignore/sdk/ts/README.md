@@ -177,8 +177,8 @@ retries, default 1).
 | --- | --- | --- |
 | `message` | `(msg, "history"\|"realtime")` | New message, ordered, deduplicated, gap-filled |
 | `message.updated` | `(msg)` | Message masked by moderation; content is already `***`; re-render by replacing |
-| `members.added` | `{conversationId, addedUserIds, event}` | Group members added (including the added users themselves) |
-| `members.removed` | `{conversationId, removedUserId, event}` | Group member removed (a kicked user is notified too) |
+| `members.added` | `{conversationId, addedUserUuids, event}` | Group members added (including the added users themselves) |
+| `members.removed` | `{conversationId, removedUserUuid, event}` | Group member removed (a kicked user is notified too) |
 | `status` | `ConnectionStatus` | `connecting / authenticating / online / reconnecting / offline / closed` |
 | `error` | `Error` | Gateway auth failure, credential renewal failure, etc. |
 | `event` | Raw `GatewayEvent` | Every gateway frame; messages of conversations not yet `history()`-tracked also arrive here |

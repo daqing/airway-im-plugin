@@ -289,8 +289,8 @@ application message, within 10 seconds of the upgrade:
 ```
 
 The gateway forwards the credential to the backend's
-`GET /internal/v1/auth`, which verifies it and returns the internal
-`user_id`. On success the connection replies
+`GET /internal/v1/auth`, which verifies it and returns the user's
+`uuid`. On success the connection replies
 `{"code":0,"data":"OK","message":null}` and is bound to the user; on
 failure or timeout it is closed with code `1008`. See
 [`gateway.md`](gateway.md) for the full wire protocol.
@@ -320,10 +320,10 @@ Every successful verification resolves the claims onto the `users` table
    authenticating every HTTP request does not become a write on every
    request.
 
-Client APIs reference conversation members by the Airway project's `uuid`
-(conversation creation, member management); internally the numeric `users.id`
-still links `conversation_members` rows and routes delivery. The `uuid` never
-appears in delivery events or inter-service traffic.
+The Airway project's `uuid` is the sole user identifier across client APIs,
+delivery events, and inter-service traffic; the internal numeric `users.id`
+never leaves the database — it only links `conversation_members`,
+`messages.sender_id`, and `direct_conversations` rows.
 
 ## 7. Admin visibility
 
@@ -336,7 +336,7 @@ dashboard:
 - `POST /admin/api/users/{uuid}/revoke` invalidates a user's outstanding
   credentials and kicks their live connections (§9).
 - `GET /admin/api/status` aggregates user counts with gateway and
-  delivery metrics, plus the online user IDs reported by the gateway's
+  delivery metrics, plus the online user uuids reported by the gateway's
   `GET /internal/v1/online`. With multiple gateway instances, merge the
   per-instance lists; `last_seen_at` remains the durable fallback for
   "recently active".

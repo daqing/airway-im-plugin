@@ -17,7 +17,7 @@ const NAME_COLORS = [196, 208, 214, 220, 154, 82, 201, 207, 218, 177, 189, 229];
 export interface ChatUIOptions {
   title: string;
   selfName: string;
-  selfId: number;
+  selfUuid: string;
 }
 
 export class ChatUI {
@@ -66,13 +66,13 @@ export class ChatUI {
     this.pushLines([`${GRAY}── ${text} ──${RESET}`]);
   }
 
-  addMessage(msg: ChatMessage, selfId: number): void {
+  addMessage(msg: ChatMessage, selfUuid: string): void {
     const who =
-      msg.sender.id === selfId
+      msg.sender.uuid === selfUuid
         ? "you"
         : (msg.sender.nickname ?? msg.sender.username);
     const time = new Date(msg.created_at).toLocaleTimeString();
-    const marker = msg.sender.id === selfId ? "→" : " ";
+    const marker = msg.sender.uuid === selfUuid ? "→" : " ";
     const body = msg.content.split("\n");
     this.pushLines([
       `${GRAY}${marker} [${time}] ${RESET}${this.colorForName(who)}${who}${RESET}${GRAY} (#${msg.sequence}):${RESET} ${LIGHT_BLUE}${body[0]}${RESET}`,

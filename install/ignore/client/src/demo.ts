@@ -49,7 +49,6 @@ async function waitUntil(cond: () => boolean, timeoutMs: number, what: string): 
 class Participant {
   client!: IMClient;
   gateway!: GatewayClient;
-  id = 0;
   uuid = "";
   events: GatewayEvent[] = [];
   online = false;
@@ -66,11 +65,8 @@ class Participant {
       name: this.name,
       nickname: this.name,
     }, INTERNAL_API);
-    const me = await this.client.me();
-    this.id = me.id;
-    this.uuid = me.uuid;
+    this.uuid = (await this.client.me()).uuid;
   }
-
   connect(): void {
     this.gateway = new GatewayClient(GATEWAY, this.client.credentialValue, {
       onEvent: (e) => this.events.push(e),
@@ -94,14 +90,14 @@ async function main(): Promise<void> {
   ];
   for (const p of [alice, bob, carol, dave]) await p.setup();
   report("identity: mint credentials + auto-register users", true,
-    `ids: alice=${alice.id} bob=${bob.id} carol=${carol.id}`);
+    `uuids: ${[alice, bob, carol].map((p) => `${p.name}=${p.uuid}`).join(" ")}`);
 
   // 1. Group creation and membership.
   const group = await alice.client.createGroup(`demo-${Date.now()}`, [bob.uuid, carol.uuid]);
   const details = await bob.client.getConversation(group.id);
   const rolesOk =
     details.members.length === 3 &&
-    details.members.find((m) => m.id === alice.id)?.role === "owner" &&
+    details.members.find((m) => m.uuid === alice.uuid)?.role === "owner" &&
     details.members.filter((m) => m.role === "member").length === 2;
   report("conversation: create group, roles assigned", rolesOk,
     details.members.map((m) => `${m.username}:${m.role}`).join(", "));

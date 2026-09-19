@@ -78,7 +78,7 @@ func TestAddMembersByOwner(t *testing.T) {
 		t.Fatalf("unexpected members: %#v", body.Data.Members)
 	}
 	newest := body.Data.Members[len(body.Data.Members)-1]
-	if newest.ID != 4 || newest.UUID != "uuid-carol" || newest.Username != "carol" || newest.Role != "member" {
+	if newest.UUID != "uuid-carol" || newest.Username != "carol" || newest.Role != "member" {
 		t.Fatalf("unexpected new member: %#v", newest)
 	}
 
@@ -280,7 +280,7 @@ func TestRemoveMemberByOwner(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Code != 0 || len(body.Data.Members) != 1 || body.Data.Members[0].ID != 1 {
+	if body.Code != 0 || len(body.Data.Members) != 1 || body.Data.Members[0].UUID != "uuid-owner" {
 		t.Fatalf("unexpected members: %#v", body.Data.Members)
 	}
 
@@ -303,7 +303,7 @@ func TestRemoveMemberByOwner(t *testing.T) {
 	if err := db.Get(&payload, "SELECT payload FROM outbox_events WHERE topic = 'conversation.member_removed'"); err != nil {
 		t.Fatalf("load event payload: %v", err)
 	}
-	if !strings.Contains(payload, `"removed_user_id":2`) || !strings.Contains(payload, `"user_ids":[1,2]`) {
+	if !strings.Contains(payload, `"removed_user_uuid":"uuid-alice"`) || !strings.Contains(payload, `"user_uuids":["uuid-owner","uuid-alice"]`) {
 		t.Fatalf("unexpected payload: %s", payload)
 	}
 }

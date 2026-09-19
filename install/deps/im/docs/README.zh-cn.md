@@ -76,7 +76,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
   get-or-create 语义）与 `group`（创建者成为 `owner`，成员任意，
   支持 `owner`/`admin`/`member` 角色）。
 - `POST /api/v1/conversations/:uuid/members` 向已有群聊添加成员，
-  `DELETE /api/v1/conversations/:uuid/members/:user_id` 移除成员
+  `DELETE /api/v1/conversations/:uuid/members/:user_uuid` 移除成员
   （仅 owner/admin；admin 只能管理普通成员；owner 不可被移除）。两者均幂等，
   并向全体在线成员扇出 `conversation.member_added` / `conversation.member_removed`
   事件 —— 移除事件也会通知被移除的用户。
@@ -328,7 +328,7 @@ HTTP API 一览：
 | `POST /api/v1/conversations` | 创建单聊/群聊 |
 | `GET /api/v1/conversations/:uuid` | 会话详情与成员 |
 | `POST /api/v1/conversations/:uuid/members` | 向群聊添加成员（owner/admin） |
-| `DELETE /api/v1/conversations/:uuid/members/:user_id` | 从群聊移除成员（owner/admin） |
+| `DELETE /api/v1/conversations/:uuid/members/:user_uuid` | 从群聊移除成员（owner/admin） |
 | `GET /api/v1/conversations/:uuid/messages?after_sequence=N` | 历史消息 / 同步 |
 | `POST /api/v1/conversations/:uuid/messages` | 向指定会话发消息 |
 | `POST /api/v1/messages` | 按会话 ID 发消息 |
