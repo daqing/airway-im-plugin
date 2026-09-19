@@ -159,22 +159,22 @@ pre .f { color: #82aaff; }           /* func */
 pre .n { color: #f78c6c; }           /* number */
 
 /* steps */
-.steps { counter-reset: step; display: grid; gap: 18px; }
+.steps { counter-reset: step; display: grid; gap: 24px; }
 .step {
   position: relative; background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 26px 26px 26px 78px;
+  border-radius: var(--radius); padding: 52px 30px 52px 86px;
 }
 .step::before {
   counter-increment: step; content: counter(step, decimal-leading-zero);
-  position: absolute; left: 22px; top: 24px;
+  position: absolute; left: 26px; top: 48px;
   font-size: 15px; font-weight: 700; color: var(--accent);
   background: var(--accent-soft); border: 1px solid rgba(91,140,255,.35);
   width: 38px; height: 38px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
 }
-.step h3 { margin-bottom: 6px; font-size: 17px; }
-.step > p { color: var(--muted); font-size: 14.5px; margin-bottom: 12px; }
-.step pre { margin-top: 10px; }
+.step h3 { margin-bottom: 18px; font-size: 18px; }
+.step > p { color: var(--muted); font-size: 14.5px; line-height: 2.1; margin-bottom: 20px; }
+.step pre { margin-top: 22px; padding: 30px 28px; font-size: 14px; line-height: 2.3; }
 
 /* tables */
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -335,80 +335,98 @@ footer .container { display: flex; justify-content: space-between; gap: 20px; fl
       <p>第三方系统通过 Airway 项目的 API 接入；消息写入与实时投递分离：backend 管数据与一致性，delivery 管 outbox 投递，gateway 管长连接。</p>
     </div>
     <div class="diagram">
-      <svg viewBox="0 0 1080 440" role="img" aria-label="第三方系统（客户端与后端）通过 Airway 项目使用 IM 服务的架构图">
+      <svg viewBox="0 0 1080 640" role="img" aria-label="第三方系统（客户端与后端）通过 Airway 项目使用 IM 服务的架构图">
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#46536e"></path>
           </marker>
+          <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b8def"></path>
+          </marker>
+          <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#e8935c"></path>
+          </marker>
+          <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#52a97e"></path>
+          </marker>
+          <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#9d85e0"></path>
+          </marker>
+          <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#55a8a8"></path>
+          </marker>
+          <marker id="arrow-rose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#d886ad"></path>
+          </marker>
         </defs>
 
         <!-- 第三方系统 group -->
-        <rect class="group" x="24" y="30" width="226" height="312" rx="12"></rect>
-        <text class="group-label" x="137" y="52" text-anchor="middle">第三方系统（外部项目）</text>
+        <rect class="group" x="24" y="40" width="226" height="420" rx="12"></rect>
+        <text class="group-label" x="137" y="64" text-anchor="middle">第三方系统（外部项目）</text>
 
         <!-- platform client -->
-        <rect class="box" x="40" y="72" width="194" height="64" rx="10"></rect>
-        <text x="137" y="96" text-anchor="middle" font-size="14" font-weight="600">客户端</text>
-        <text class="sub" x="137" y="116" text-anchor="middle" font-size="11.5">小程序 / App / 浏览器 JS</text>
+        <rect class="box" x="40" y="96" width="194" height="64" rx="10"></rect>
+        <text x="137" y="120" text-anchor="middle" font-size="14" font-weight="600">客户端</text>
+        <text class="sub" x="137" y="140" text-anchor="middle" font-size="11.5">小程序 / App / 浏览器 JS</text>
 
         <!-- platform backend -->
-        <rect class="box" x="40" y="232" width="194" height="84" rx="10"></rect>
-        <text x="137" y="258" text-anchor="middle" font-size="14" font-weight="600">第三方后端</text>
-        <text class="sub" x="137" y="278" text-anchor="middle" font-size="11.5">PHP / Java / Python</text>
-        <text class="sub" x="137" y="296" text-anchor="middle" font-size="11.5">自有账号系统 · 登录认证</text>
+        <rect class="box" x="40" y="330" width="194" height="84" rx="10"></rect>
+        <text x="137" y="356" text-anchor="middle" font-size="14" font-weight="600">第三方后端</text>
+        <text class="sub" x="137" y="376" text-anchor="middle" font-size="11.5">PHP / Java / Python</text>
+        <text class="sub" x="137" y="394" text-anchor="middle" font-size="11.5">自有账号系统 · 登录认证</text>
 
         <!-- gateway: front-facing service between platform and Airway project -->
-        <rect class="box box-accent" x="310" y="320" width="170" height="84" rx="10"></rect>
-        <text x="395" y="346" text-anchor="middle" font-size="14.5" font-weight="700">gateway :1910</text>
-        <text class="sub" x="395" y="366" text-anchor="middle" font-size="11.5">WebSocket 长连接 · 前置入口</text>
-        <text class="sub" x="395" y="384" text-anchor="middle" font-size="11.5">多设备 · 有界队列</text>
+        <rect class="box box-accent" x="310" y="500" width="170" height="84" rx="10"></rect>
+        <text x="395" y="526" text-anchor="middle" font-size="14.5" font-weight="700">gateway :1910</text>
+        <text class="sub" x="395" y="546" text-anchor="middle" font-size="11.5">WebSocket 长连接 · 前置入口</text>
+        <text class="sub" x="395" y="564" text-anchor="middle" font-size="11.5">多设备 · 有界队列</text>
 
         <!-- Airway project group -->
-        <rect class="group" x="580" y="30" width="476" height="396" rx="12"></rect>
-        <text class="group-label" x="818" y="52" text-anchor="middle">Airway 项目（Go · 独立部署微服务）</text>
+        <rect class="group" x="580" y="40" width="476" height="560" rx="12"></rect>
+        <text class="group-label" x="818" y="64" text-anchor="middle">Airway 项目（Go · 独立部署微服务）</text>
 
         <!-- backend -->
-        <rect class="box box-accent" x="600" y="76" width="290" height="74" rx="10"></rect>
-        <text x="745" y="98" text-anchor="middle" font-size="14.5" font-weight="700">backend :1905</text>
-        <text class="sub" x="745" y="117" text-anchor="middle" font-size="11.5">REST API · 会话 / 消息 / 审核</text>
-        <text class="sub" x="745" y="134" text-anchor="middle" font-size="11.5">验签 · 用户注册 · 内部 API 独立监听 :1906</text>
+        <rect class="box box-accent" x="600" y="96" width="290" height="74" rx="10"></rect>
+        <text x="745" y="118" text-anchor="middle" font-size="14.5" font-weight="700">backend :1905</text>
+        <text class="sub" x="745" y="137" text-anchor="middle" font-size="11.5">REST API · 会话 / 消息 / 审核</text>
+        <text class="sub" x="745" y="154" text-anchor="middle" font-size="11.5">验签 · 用户注册 · 内部 API 独立监听 :1906</text>
 
         <!-- db -->
-        <rect class="box" x="600" y="240" width="290" height="52" rx="10"></rect>
-        <text x="745" y="262" text-anchor="middle" font-size="13.5" font-weight="600">数据库 + outbox_events</text>
-        <text class="sub" x="745" y="280" text-anchor="middle" font-size="11.5">SQLite / MySQL / PostgreSQL</text>
+        <rect class="box" x="600" y="330" width="290" height="52" rx="10"></rect>
+        <text x="745" y="352" text-anchor="middle" font-size="13.5" font-weight="600">数据库 + outbox_events</text>
+        <text class="sub" x="745" y="370" text-anchor="middle" font-size="11.5">SQLite / MySQL / PostgreSQL</text>
 
         <!-- delivery -->
-        <rect class="box box-accent" x="600" y="344" width="290" height="60" rx="10"></rect>
-        <text x="745" y="368" text-anchor="middle" font-size="14.5" font-weight="700">delivery :1920</text>
-        <text class="sub" x="745" y="388" text-anchor="middle" font-size="11.5">事务性 outbox 投递器</text>
+        <rect class="box box-accent" x="600" y="500" width="290" height="60" rx="10"></rect>
+        <text x="745" y="524" text-anchor="middle" font-size="14.5" font-weight="700">delivery :1920</text>
+        <text class="sub" x="745" y="544" text-anchor="middle" font-size="11.5">事务性 outbox 投递器</text>
 
-        <!-- edges -->
-        <path class="edge" d="M 100 136 L 100 230" marker-start="url(#arrow)"></path>
-        <text class="edge-label" x="114" y="166">① 平台自有账号登录</text>
-        <text class="edge-label" x="114" y="186">③ 随登录响应下发凭证</text>
+        <!-- edges: one pastel color per flow -->
+        <path class="edge" d="M 100 164 L 100 326" marker-start="url(#arrow-blue)" style="stroke:#5b8def"></path>
+        <text class="edge-label" x="114" y="230">① 平台自有账号登录</text>
+        <text class="edge-label" x="114" y="256">③ 随登录响应下发凭证</text>
 
-        <path class="edge" d="M 234 252 C 350 252 460 190 596 134"></path>
-        <text class="edge-label" x="380" y="240">② 请求签发凭证（内部 API :1906）</text>
-        <text class="edge-label" x="380" y="258" font-size="10">需 IM_INTERNAL_SECRET，仅服务端可达</text>
+        <path class="edge" d="M 234 360 C 350 360 470 220 596 150" style="stroke:#e8935c; marker-end: url(#arrow-orange)"></path>
+        <text class="edge-label" x="300" y="388">② 请求签发凭证（内部 API :1906）</text>
+        <text class="edge-label" x="300" y="408" font-size="10">需 IM_INTERNAL_SECRET，仅服务端可达</text>
 
-        <path class="edge" d="M 234 88 C 340 48 480 52 596 90"></path>
-        <text class="edge-label" x="415" y="40" text-anchor="middle">④ HTTPS REST（Bearer 凭证）</text>
+        <path class="edge" d="M 234 112 C 340 56 470 60 596 100" style="stroke:#52a97e; marker-end: url(#arrow-green)"></path>
+        <text class="edge-label" x="415" y="46" text-anchor="middle">④ HTTPS REST（Bearer 凭证）</text>
 
-        <path class="edge" d="M 234 120 C 260 170 280 270 328 318"></path>
-        <text class="edge-label" x="330" y="290">⑤ WSS 长连接（首条 auth 命令）</text>
+        <path class="edge" d="M 234 140 C 250 220 260 430 368 496" style="stroke:#9d85e0; marker-end: url(#arrow-purple)"></path>
+        <text class="edge-label" x="330" y="440">⑤ WSS 长连接（首条 auth 命令）</text>
 
-        <path class="edge" d="M 480 330 C 520 330 560 200 596 150" stroke-dasharray="5 4"></path>
-        <text class="edge-label" x="605" y="168" font-size="10.5">验签 /internal/v1/auth</text>
+        <path class="edge" d="M 476 502 C 560 500 600 300 596 164" stroke-dasharray="5 4" style="stroke:#55a8a8; marker-end: url(#arrow-teal)"></path>
+        <text class="edge-label" x="608" y="195" font-size="10">验签 /internal/v1/auth</text>
 
-        <path class="edge" d="M 745 150 L 745 238"></path>
-        <text class="edge-label" x="755" y="200">同事务写消息 + outbox</text>
+        <path class="edge" d="M 745 172 L 745 326" style="stroke:#d886ad; marker-end: url(#arrow-rose)"></path>
+        <text class="edge-label" x="760" y="250">同事务写消息 + outbox</text>
 
-        <path class="edge" d="M 745 344 L 745 294"></path>
-        <text class="edge-label" x="755" y="324">轮询 outbox</text>
+        <path class="edge" d="M 745 496 L 745 386" style="stroke:#d886ad; marker-end: url(#arrow-rose)"></path>
+        <text class="edge-label" x="760" y="445">轮询 outbox</text>
 
-        <path class="edge" d="M 600 374 C 560 374 520 372 484 369"></path>
-        <text class="edge-label" x="541" y="392" text-anchor="middle">投递命令</text>
+        <path class="edge" d="M 600 530 C 560 532 520 538 486 540" style="stroke:#d886ad; marker-end: url(#arrow-rose)"></path>
+        <text class="edge-label" x="541" y="562" text-anchor="middle">投递命令</text>
       </svg>
     </div>
     <div class="note">
