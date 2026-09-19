@@ -113,8 +113,8 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 - 凭证撤销：`POST /admin/api/users/:uuid/revoke` 递增用户的
   `token_version`（使 backend 签发的凭证立即失效），并踢掉 gateway 上的
   在线连接。
-- 群聊会话浏览、消息查看，以及一键 `mark-illegal`：违规内容对客户端
-  屏蔽为 `***`，并向在线成员扇出 `message.moderated` 事件。
+- 会话浏览覆盖群聊**与**单聊，支持消息查看与一键 `mark-illegal`：违规内容
+  对客户端屏蔽为 `***`，并向在线成员扇出 `message.moderated` 事件。
 
 **可观测性**
 
@@ -383,7 +383,7 @@ JavaScript 工具链。四个页面覆盖了 `/admin/api` 的全部能力：
 | --- | --- |
 | **概览（Overview）** | 注册用户数、在线人数、outbox 待发布/已发布（含积压时长与失败次数）、gateway/delivery 实时指标面板；每 15 秒自动刷新，服务异常时明确标注。 |
 | **用户（Users）** | 可搜索的身份目录（用户名、昵称、邮箱、UUID、最近活跃、token 版本），一键**吊销凭证** —— 递增 `token_version` 并显示踢掉了多少条在线连接。 |
-| **会话（Conversations）** | 群聊列表（成员数、消息数、最近活跃）；点击行即可进入消息查看。 |
+| **会话（Conversations）** | 群聊与单聊分两个标签页 —— 群聊显示成员/消息数，单聊以参与者组合标识；支持统一搜索，点击行即可查看消息。 |
 | **消息（Messages）** | 按会话查看完整消息（sequence、发送者、内容、类型、状态）；打开详情并可**标记违规** —— 内容对客户端屏蔽为 `***`，并向在线成员扇出 `message.moderated` 事件。 |
 
 需要程序化访问同一能力时，使用 `/admin/api` 的 HTTP 端点

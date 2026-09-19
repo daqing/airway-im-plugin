@@ -14,9 +14,9 @@ hours; restarting the backend invalidates all sessions.
 | `GET` | `/admin/api/status` | Aggregate user, outbox, Gateway, and Delivery metrics. |
 | `GET` | `/admin/api/users` | List automatically registered user identities. |
 | `POST` | `/admin/api/users/{uuid}/revoke` | Invalidate the user's minted credentials (bumps `token_version`) and kick live Gateway connections. |
-| `GET` | `/admin/api/conversations` | List all group conversations with counters. |
-| `GET` | `/admin/api/conversations/{id}/messages` | List all messages in a group conversation. |
-| `POST` | `/admin/api/messages/{id}/mark-illegal` | Mask a message and notify online members. |
+| `GET` | `/admin/api/conversations` | List conversations of every kind with counters. Optional `?kind=group` or `?kind=direct` narrows the listing; direct entries carry their `participants`. |
+| `GET` | `/admin/api/conversations/{id}/messages` | List all messages in a conversation (group or direct). |
+| `POST` | `/admin/api/messages/{id}/mark-illegal` | Mask a message (group or direct) and notify online members. |
 
 Protected operations use `Authorization: Bearer <admin-session-token>`. Admin
 session tokens and user credentials are different credential types and cannot

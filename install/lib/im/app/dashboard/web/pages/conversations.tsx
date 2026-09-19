@@ -3,12 +3,30 @@ import type { ColumnDef } from "@tanstack/react-table";
 
 import { useApiQuery } from "../api";
 import { formatDateTime, formatNumber, formatRelative, truncate } from "../format";
-import type { AdminConversation } from "../types";
+import type { AdminConversation, AdminParticipant } from "../types";
 import { DataTable } from "../ui/table";
 import { Input } from "../ui/inputs";
+import { Tabs } from "../ui/tabs";
 import { ErrorBanner, Page, PageLoading } from "./page";
 
 const CONVERSATIONS_REFETCH_MS = 30_000;
+
+function participantNames(participants: AdminParticipant[] | undefined): string {
+  const names = (participants ?? []).map((p) => p.nickname ?? p.username);
+  return names.length > 0 ? names.join(" ↔ ") : "Direct conversation";
+}
+
+function searchMatches(conversation: AdminConversation, needle: string): boolean {
+  const fields = [
+    conversation.title,
+    conversation.creator_username,
+    conversation.id,
+    ...(conversation.participants ?? []).flatMap((p) => [p.username, p.nickname]),
+  ];
+  return fields
+    .filter(Boolean)
+    .some((field) => (field as string).toLowerCase().includes(needle));
+}
 
 export function Conversations() {
   const [search, setSearch] = useState("");
@@ -22,14 +40,13 @@ export function Conversations() {
     const data = conversations.data ?? [];
     const needle = search.trim().toLowerCase();
     if (!needle) return data;
-    return data.filter((conversation) =>
-      [conversation.title, conversation.creator_username, conversation.id]
-        .filter(Boolean)
-        .some((field) => (field as string).toLowerCase().includes(needle)),
-    );
+    return data.filter((conversation) => searchMatches(conversation, needle));
   }, [conversations.data, search]);
 
-  const columns = useMemo<ColumnDef<AdminConversation, any>[]>(
+  const groups = useMemo(() => filtered.filter((c) => c.kind === "group"), [filtered]);
+  const directs = useMemo(() => filtered.filter((c) => c.kind === "direct"), [filtered]);
+
+  const groupColumns = useMemo<ColumnDef<AdminConversation, any>[]>(
     () => [
       {
         header: "Title",
@@ -58,6 +75,34 @@ export function Conversations() {
     [],
   );
 
+  const directColumns = useMemo<ColumnDef<AdminConversation, any>[]>(
+    () => [
+      {
+        header: "Participants",
+        accessorFn: (row) => participantNames(row.participants),
+        id: "participants",
+        cell: (ctx) => (
+          <div>
+            <div class="admin-cell-strong">{participantNames(ctx.row.original.participants)}</div>
+            <div class="admin-cell-sub admin-mono">{truncate(ctx.row.original.id, 16)}</div>
+          </div>
+        ),
+      },
+      { header: "Messages", accessorKey: "message_count", cell: (ctx) => formatNumber(ctx.row.original.message_count) },
+      {
+        header: "Latest activity",
+        accessorKey: "latest_message_at",
+        cell: (ctx) => formatRelative(ctx.row.original.latest_message_at),
+      },
+      {
+        header: "Created",
+        accessorKey: "created_at",
+        cell: (ctx) => formatDateTime(ctx.row.original.created_at),
+      },
+    ],
+    [],
+  );
+
   if (conversations.isPending) {
     return <PageLoading />;
   }
@@ -68,17 +113,42 @@ export function Conversations() {
   return (
     <Page
       title="Conversations"
-      subtitle={`${formatNumber((conversations.data ?? []).length)} group conversation(s) · click a row to inspect its messages`}
-      toolbar={<Input class="admin-search" placeholder="Search title, creator, ID…" value={search} onInput={(e) => setSearch((e.target as HTMLInputElement).value)} />}
+      subtitle={`${formatNumber(groups.length)} group(s) · ${formatNumber(directs.length)} direct · click a row to inspect its messages`}
+      toolbar={<Input class="admin-search" placeholder="Search title, participant, ID…" value={search} onInput={(e) => setSearch((e.target as HTMLInputElement).value)} />}
     >
-      <DataTable
-        columns={columns}
-        data={filtered}
-        pageSize={15}
-        onRowClick={(conversation) => {
-          window.location.hash = `#/conversations/${conversation.id}`;
-        }}
-        empty={{ title: "No group conversations yet", description: "Groups appear here as soon as clients create them." }}
+      <Tabs
+        items={[
+          {
+            id: "groups",
+            label: `Groups (${formatNumber(groups.length)})`,
+            content: (
+              <DataTable
+                columns={groupColumns}
+                data={groups}
+                pageSize={15}
+                onRowClick={(conversation) => {
+                  window.location.hash = `#/conversations/${conversation.id}`;
+                }}
+                empty={{ title: "No group conversations yet", description: "Groups appear here as soon as clients create them." }}
+              />
+            ),
+          },
+          {
+            id: "direct",
+            label: `Direct (${formatNumber(directs.length)})`,
+            content: (
+              <DataTable
+                columns={directColumns}
+                data={directs}
+                pageSize={15}
+                onRowClick={(conversation) => {
+                  window.location.hash = `#/conversations/${conversation.id}`;
+                }}
+                empty={{ title: "No direct conversations yet", description: "One-to-one chats appear here once clients exchange direct messages." }}
+              />
+            ),
+          },
+        ]}
       />
     </Page>
   );

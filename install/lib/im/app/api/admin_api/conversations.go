@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/repo"
@@ -13,18 +14,25 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+type adminParticipant struct {
+	UUID     string  `db:"uuid" json:"uuid"`
+	Username string  `db:"username" json:"username"`
+	Nickname *string `db:"nickname" json:"nickname"`
+}
+
 type adminConversation struct {
-	ID              string    `db:"id" json:"id"`
-	Kind            string    `db:"kind" json:"kind"`
-	Title           *string   `db:"title" json:"title"`
-	AvatarURL       *string   `db:"avatar_url" json:"avatar_url"`
-	CreatedBy       string    `db:"created_by" json:"created_by"`
-	CreatorUsername string    `db:"creator_username" json:"creator_username"`
-	MemberCount     int64     `db:"member_count" json:"member_count"`
-	MessageCount    int64     `db:"message_count" json:"message_count"`
-	LatestMessageAt *string   `db:"latest_message_at" json:"latest_message_at"`
-	CreatedAt       time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt       time.Time `db:"updated_at" json:"updated_at"`
+	ID              string             `db:"id" json:"id"`
+	Kind            string             `db:"kind" json:"kind"`
+	Title           *string            `db:"title" json:"title"`
+	AvatarURL       *string            `db:"avatar_url" json:"avatar_url"`
+	CreatedBy       string             `db:"created_by" json:"created_by"`
+	CreatorUsername string             `db:"creator_username" json:"creator_username"`
+	MemberCount     int64              `db:"member_count" json:"member_count"`
+	MessageCount    int64              `db:"message_count" json:"message_count"`
+	LatestMessageAt *string            `db:"latest_message_at" json:"latest_message_at"`
+	CreatedAt       time.Time          `db:"created_at" json:"created_at"`
+	UpdatedAt       time.Time          `db:"updated_at" json:"updated_at"`
+	Participants    []adminParticipant `json:"participants,omitempty"`
 }
 
 type adminMessage struct {
@@ -55,11 +63,21 @@ func ListConversations(c *gin.Context) {
 		        WHERE m.conversation_id = c.id) AS latest_message_at,
 		       c.created_at, c.updated_at
 		FROM conversations c
-		JOIN users creator ON creator.id = c.created_by
-		WHERE c.kind = 'group'
-		ORDER BY c.updated_at DESC, c.id DESC`
+		JOIN users creator ON creator.id = c.created_by`
+	kind := strings.TrimSpace(c.Query("kind"))
+	var args []any
+	if kind == "group" || kind == "direct" {
+		query += " WHERE c.kind = ?"
+		args = append(args, kind)
+	}
+	query += " ORDER BY c.updated_at DESC, c.id DESC"
+
 	var conversations []adminConversation
-	if err := db.Select(&conversations, query); err != nil {
+	if err := db.Select(&conversations, db.Rebind(query), args...); err != nil {
+		adminError(c, http.StatusInternalServerError, 20000, "Could not load conversations")
+		return
+	}
+	if err := attachParticipants(db, conversations); err != nil {
 		adminError(c, http.StatusInternalServerError, 20000, "Could not load conversations")
 		return
 	}
@@ -69,17 +87,59 @@ func ListConversations(c *gin.Context) {
 	adminOK(c, conversations)
 }
 
+// attachParticipants fills in the member identities of direct conversations,
+// where the pair of participants is what identifies the conversation (a
+// group has its title). Portable across the three SQL dialects: one extra
+// query instead of dialect-specific string aggregation.
+func attachParticipants(db *sqlx.DB, conversations []adminConversation) error {
+	var directIDs []string
+	for _, conversation := range conversations {
+		if conversation.Kind == "direct" {
+			directIDs = append(directIDs, conversation.ID)
+		}
+	}
+	if len(directIDs) == 0 {
+		return nil
+	}
+	byConversation := make(map[string][]adminParticipant, len(directIDs))
+	query, args, err := sqlx.In(`
+		SELECT cm.conversation_id, u.uuid, u.username, u.nickname
+		FROM conversation_members cm
+		JOIN users u ON u.id = cm.user_id
+		WHERE cm.left_at IS NULL AND cm.conversation_id IN (?)
+		ORDER BY cm.joined_at ASC, u.id ASC`, directIDs)
+	if err != nil {
+		return err
+	}
+	var rows []struct {
+		ConversationID string `db:"conversation_id"`
+		adminParticipant
+	}
+	if err := db.Select(&rows, db.Rebind(query), args...); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		byConversation[row.ConversationID] = append(byConversation[row.ConversationID], row.adminParticipant)
+	}
+	for i := range conversations {
+		if conversations[i].Kind == "direct" {
+			conversations[i].Participants = byConversation[conversations[i].ID]
+		}
+	}
+	return nil
+}
+
 func ListConversationMessages(c *gin.Context) {
 	conversationID := c.Param("conversation_uuid")
 	db := repo.CurrentDB()
 
 	var count int
-	if err := db.Get(&count, db.Rebind("SELECT COUNT(*) FROM conversations WHERE id = ? AND kind = 'group'"), conversationID); err != nil {
+	if err := db.Get(&count, db.Rebind("SELECT COUNT(*) FROM conversations WHERE id = ?"), conversationID); err != nil {
 		adminError(c, http.StatusInternalServerError, 20000, "Could not load conversation")
 		return
 	}
 	if count == 0 {
-		adminError(c, http.StatusNotFound, 20007, "Group conversation not found")
+		adminError(c, http.StatusNotFound, 20007, "Conversation not found")
 		return
 	}
 
@@ -176,7 +236,6 @@ func loadAdminMessage(db *sqlx.DB, messageID string) (*adminMessage, error) {
 		       m.is_illegal, m.moderated_at
 		FROM messages m
 		JOIN users sender ON sender.id = m.sender_id
-		JOIN conversations c ON c.id = m.conversation_id AND c.kind = 'group'
 		WHERE m.id = ?`
 	var message adminMessage
 	if err := db.Get(&message, db.Rebind(query), messageID); err != nil {

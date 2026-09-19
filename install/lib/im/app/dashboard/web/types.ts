@@ -17,6 +17,12 @@ export type RevokeResult = {
   connections_kicked: number;
 };
 
+export type AdminParticipant = {
+  uuid: string;
+  username: string;
+  nickname: string | null;
+};
+
 export type AdminConversation = {
   id: string;
   kind: string;
@@ -29,6 +35,7 @@ export type AdminConversation = {
   latest_message_at: string | null;
   created_at: string;
   updated_at: string;
+  participants?: AdminParticipant[];
 };
 
 export type AdminMessage = {

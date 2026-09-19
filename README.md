@@ -148,9 +148,9 @@ Design contracts:
 - Credential revocation: `POST /admin/api/users/:uuid/revoke` bumps the
   user's `token_version` (invalidating backend-minted credentials) and
   kicks live gateway connections.
-- Group conversation browser, message viewer, and one-click
-  `mark-illegal`: illegal content is masked to `***` for clients and a
-  `message.moderated` event fans out to online members.
+- Conversation browser for groups **and** direct messages, message viewer,
+  and one-click `mark-illegal`: illegal content is masked to `***` for
+  clients and a `message.moderated` event fans out to online members.
 
 **Observability**
 
@@ -432,7 +432,7 @@ pages cover the whole `/admin/api` surface:
 | --- | --- |
 | **Overview** | Registered users, online count, outbox pending/published (with backlog age and failed attempts), and live gateway/delivery metrics panels; auto-refreshes every 15s and flags degraded services. |
 | **Users** | Searchable identity directory (username, nickname, email, UUID, last seen, token version) with one-click **credential revocation** — bumps `token_version` and reports how many live gateway connections were kicked. |
-| **Conversations** | Group conversations with member/message counts and latest activity; click a row to inspect its messages. |
+| **Conversations** | Group and direct conversations on two tabs — groups with member/message counts, direct chats labeled by their participant pair; search across both, click a row to inspect its messages. |
 | **Messages** | Per-conversation message list (sequence, sender, content, type, status); open a message for detail and **mark it illegal** — content is masked to `***` for clients and a `message.moderated` event fans out to online members. |
 
 The same surface is available programmatically through the `/admin/api`

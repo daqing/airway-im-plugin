@@ -36,8 +36,7 @@ export function ConversationMessages(props: { conversationId: string }) {
     onSettled: () => setModerateTarget(null),
   });
 
-  const conversation = (conversations.data ?? []).find((c) => c.id === props.conversationId);
-  const columns = useMemo<ColumnDef<AdminMessage, any>[]>(
+  const conversation = (conversations.data ?? []).find((c) => c.id === props.conversationId);  const columns = useMemo<ColumnDef<AdminMessage, any>[]>(
     () => [
       { header: "Seq", accessorKey: "sequence", cell: (ctx) => <span class="admin-mono">#{ctx.row.original.sequence}</span> },
       {
@@ -115,7 +114,7 @@ export function ConversationMessages(props: { conversationId: string }) {
   }
   if (!conversation) {
     return (
-      <ErrorBanner message={`Group conversation ${props.conversationId} was not found.`}>
+      <ErrorBanner message={`Conversation ${props.conversationId} was not found.`}>
         <p>
           <a href="#/conversations">← Back to conversations</a>
         </p>
@@ -123,9 +122,15 @@ export function ConversationMessages(props: { conversationId: string }) {
     );
   }
 
+  const heading =
+    conversation.title ??
+    (conversation.participants && conversation.participants.length > 0
+      ? conversation.participants.map((p) => p.nickname ?? p.username).join(" ↔ ")
+      : "Direct conversation");
+
   return (
     <Page
-      title={conversation.title ?? "Untitled group"}
+      title={heading}
       subtitle={
         <>
           <a href="#/conversations">← Conversations</a>
