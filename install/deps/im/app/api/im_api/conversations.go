@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daqing/airway-im-plugin/install/deps/im/app/models"
 	"github.com/daqing/airway-im-plugin/install/deps/im/app/repo"
 	"github.com/daqing/airway-im-plugin/install/deps/im/app/utils"
 	"github.com/gin-gonic/gin"
@@ -15,14 +16,14 @@ import (
 )
 
 type createConversationRequest struct {
-	Kind      string  `json:"kind"`
-	Title     *string `json:"title"`
-	MemberIDs []int64 `json:"member_ids"`
+	Kind        string   `json:"kind"`
+	Title       *string  `json:"title"`
+	MemberUUIDs []string `json:"member_uuids"`
 }
 
 type createGroupRequest struct {
-	Title     *string `json:"title"`
-	MemberIDs []int64 `json:"member_ids"`
+	Title       *string  `json:"title"`
+	MemberUUIDs []string `json:"member_uuids"`
 }
 
 type conversationResponse struct {
@@ -37,6 +38,7 @@ type conversationResponse struct {
 
 type conversationMemberResponse struct {
 	ID        int64   `db:"id" json:"id"`
+	UUID      string  `db:"uuid" json:"uuid"`
 	Username  string  `db:"username" json:"username"`
 	Nickname  *string `db:"nickname" json:"nickname"`
 	AvatarURL *string `db:"avatar_url" json:"avatar_url"`
@@ -129,7 +131,7 @@ func CreateConversation(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, 10003, "Invalid JSON body")
 		return
 	}
-	createConversation(c, user.ID, request)
+	createConversation(c, user, request)
 }
 
 // CreateGroup creates a group conversation owned by the authenticated user.
@@ -143,49 +145,48 @@ func CreateGroup(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, 10003, "Invalid JSON body")
 		return
 	}
-	createConversation(c, user.ID, createConversationRequest{
-		Kind:      "group",
-		Title:     request.Title,
-		MemberIDs: request.MemberIDs,
+	createConversation(c, user, createConversationRequest{
+		Kind:        "group",
+		Title:       request.Title,
+		MemberUUIDs: request.MemberUUIDs,
 	})
 }
 
-func createConversation(c *gin.Context, userID int64, request createConversationRequest) {
+func createConversation(c *gin.Context, user *models.User, request createConversationRequest) {
 	request.Kind = strings.ToLower(strings.TrimSpace(request.Kind))
 	if request.Kind != "direct" && request.Kind != "group" {
 		respondError(c, http.StatusBadRequest, 10003, "Conversation kind must be direct or group")
 		return
 	}
 
-	members := uniquePositiveIDs(request.MemberIDs)
-	delete(members, userID)
-	if request.Kind == "direct" && len(members) != 1 {
+	memberUUIDs := uniqueUUIDs(request.MemberUUIDs)
+	delete(memberUUIDs, user.UUID)
+	if request.Kind == "direct" && len(memberUUIDs) != 1 {
 		respondError(c, http.StatusBadRequest, 10003, "A direct conversation requires one other member")
 		return
 	}
-	if request.Kind == "group" && len(members) == 0 {
+	if request.Kind == "group" && len(memberUUIDs) == 0 {
 		respondError(c, http.StatusBadRequest, 10003, "A group requires at least one other member")
 		return
 	}
 
 	db := repo.CurrentDB()
-	memberIDs := make([]int64, 0, len(members))
-	for memberID := range members {
-		memberIDs = append(memberIDs, memberID)
-	}
-	query, args, err := sqlx.In("SELECT COUNT(*) FROM users WHERE id IN (?)", memberIDs)
+	resolved, err := resolveUsers(db, memberUUIDs)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, 10003, "Invalid members")
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load members")
 		return
 	}
-	var existingMembers int
-	if err := db.Get(&existingMembers, db.Rebind(query), args...); err != nil || existingMembers != len(memberIDs) {
+	if len(resolved) != len(memberUUIDs) {
 		respondError(c, http.StatusBadRequest, 10003, "One or more members do not exist")
 		return
 	}
+	memberIDs := make([]int64, 0, len(resolved))
+	for _, member := range resolved {
+		memberIDs = append(memberIDs, member.ID)
+	}
 	if request.Kind == "direct" {
-		for target := range members {
-			if existing, err := findDirect(db, userID, target); err == nil && existing != nil {
+		for _, member := range resolved {
+			if existing, err := findDirect(db, user.ID, member.ID); err == nil && existing != nil {
 				respond(c, http.StatusOK, existing)
 				return
 			}
@@ -199,24 +200,24 @@ func createConversation(c *gin.Context, userID int64, request createConversation
 	}
 	now := time.Now().UTC()
 	err = repo.Tx(db, func(tx *sqlx.Tx) error {
-		if _, err := tx.Exec(tx.Rebind("INSERT INTO conversations (id, kind, title, avatar_url, created_by, next_sequence, created_at, updated_at) VALUES (?, ?, ?, NULL, ?, 1, ?, ?)"), id, request.Kind, request.Title, userID, now, now); err != nil {
+		if _, err := tx.Exec(tx.Rebind("INSERT INTO conversations (id, kind, title, avatar_url, created_by, next_sequence, created_at, updated_at) VALUES (?, ?, ?, NULL, ?, 1, ?, ?)"), id, request.Kind, request.Title, user.ID, now, now); err != nil {
 			return err
 		}
 		role := "owner"
 		if request.Kind == "direct" {
 			role = "member"
 		}
-		if _, err := tx.Exec(tx.Rebind("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)"), id, userID, role, now); err != nil {
+		if _, err := tx.Exec(tx.Rebind("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)"), id, user.ID, role, now); err != nil {
 			return err
 		}
-		for memberID := range members {
-			if _, err := tx.Exec(tx.Rebind("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) SELECT ?, id, 'member', ? FROM users WHERE id = ?"), id, now, memberID); err != nil {
+		for _, member := range resolved {
+			if _, err := tx.Exec(tx.Rebind("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)"), id, member.ID, now); err != nil {
 				return err
 			}
 		}
 		if request.Kind == "direct" {
-			for target := range members {
-				low, high := orderedPair(userID, target)
+			for _, member := range resolved {
+				low, high := orderedPair(user.ID, member.ID)
 				_, err := tx.Exec(tx.Rebind("INSERT INTO direct_conversations (conversation_id, user_id_low, user_id_high) VALUES (?, ?, ?)"), id, low, high)
 				return err
 			}
@@ -225,8 +226,8 @@ func createConversation(c *gin.Context, userID int64, request createConversation
 	})
 	if err != nil {
 		if request.Kind == "direct" {
-			for target := range members {
-				if existing, lookupErr := findDirect(db, userID, target); lookupErr == nil && existing != nil {
+			for _, member := range resolved {
+				if existing, lookupErr := findDirect(db, user.ID, member.ID); lookupErr == nil && existing != nil {
 					respond(c, http.StatusOK, existing)
 					return
 				}
@@ -235,7 +236,7 @@ func createConversation(c *gin.Context, userID int64, request createConversation
 		respondError(c, http.StatusInternalServerError, 10000, "Could not create conversation")
 		return
 	}
-	respond(c, http.StatusCreated, conversationResponse{ID: id, Kind: request.Kind, Title: request.Title, CreatedBy: userID, CreatedAt: now, UpdatedAt: now})
+	respond(c, http.StatusCreated, conversationResponse{ID: id, Kind: request.Kind, Title: request.Title, CreatedBy: user.ID, CreatedAt: now, UpdatedAt: now})
 }
 
 func findDirect(db *sqlx.DB, first, second int64) (*conversationResponse, error) {
@@ -253,14 +254,36 @@ func findDirect(db *sqlx.DB, first, second int64) (*conversationResponse, error)
 	return &response, rows.StructScan(&response)
 }
 
-func uniquePositiveIDs(ids []int64) map[int64]struct{} {
-	result := make(map[int64]struct{}, len(ids))
-	for _, id := range ids {
-		if id > 0 {
-			result[id] = struct{}{}
+func uniqueUUIDs(uuids []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(uuids))
+	for _, uuid := range uuids {
+		if uuid = strings.TrimSpace(uuid); uuid != "" {
+			result[uuid] = struct{}{}
 		}
 	}
 	return result
+}
+
+// resolvedUser is a users row looked up from a member uuid.
+type resolvedUser struct {
+	ID   int64  `db:"id"`
+	UUID string `db:"uuid"`
+}
+
+// resolveUsers maps member uuids to their users rows; callers compare the
+// result length to detect unknown uuids.
+func resolveUsers(db *sqlx.DB, uuids map[string]struct{}) ([]resolvedUser, error) {
+	list := make([]string, 0, len(uuids))
+	for uuid := range uuids {
+		list = append(list, uuid)
+	}
+	query, args, err := sqlx.In("SELECT id, uuid FROM users WHERE uuid IN (?)", list)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]resolvedUser, 0, len(list))
+	err = db.Select(&users, db.Rebind(query), args...)
+	return users, err
 }
 
 func orderedPair(a, b int64) (int64, int64) {

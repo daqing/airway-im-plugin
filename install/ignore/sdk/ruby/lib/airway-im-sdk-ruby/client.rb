@@ -53,22 +53,24 @@ module AirwayIM
     end
 
     # Create or resolve a conversation. kind: "direct" (get-or-create, may
-    # return an existing conversation) or "group" (always creates). member_ids
-    # lists the *other* users; the authenticated user must not be included.
-    def create_conversation(kind:, member_ids:, title: nil)
-      body = { kind: kind, member_ids: member_ids }
+    # return an existing conversation) or "group" (always creates). member_uuids
+    # lists the *other* users by their stable identity uuid; the authenticated
+    # user must not be included.
+    def create_conversation(kind:, member_uuids:, title: nil)
+      body = { kind: kind, member_uuids: member_uuids }
       body[:title] = title unless title.nil?
       post("/api/v1/conversations", body: body)
     end
 
-    # Get-or-create the direct conversation with one other user.
-    def create_direct(other_user_id)
-      create_conversation(kind: "direct", member_ids: [other_user_id])
+    # Get-or-create the direct conversation with one other user, identified
+    # by their uuid.
+    def create_direct(other_uuid)
+      create_conversation(kind: "direct", member_uuids: [other_uuid])
     end
 
     # Create a new group; the authenticated user becomes its owner.
-    def create_group(member_ids:, title: nil)
-      body = { member_ids: member_ids }
+    def create_group(member_uuids:, title: nil)
+      body = { member_uuids: member_uuids }
       body[:title] = title unless title.nil?
       post("/api/v1/group", body: body)
     end
@@ -78,17 +80,18 @@ module AirwayIM
       get("/api/v1/conversations/#{Util.escape_segment(uuid)}")
     end
 
-    # Add members to a group (owner/admin). Idempotent for already-active
-    # members.
-    def add_members(uuid, member_ids)
+    # Add members (identified by uuid) to a group (owner/admin). Idempotent
+    # for already-active members.
+    def add_members(uuid, member_uuids)
       post("/api/v1/conversations/#{Util.escape_segment(uuid)}/members",
-           body: { member_ids: member_ids })
+           body: { member_uuids: member_uuids })
     end
 
-    # Remove one member from a group (owner/admin; cannot remove self or the
-    # owner). Idempotent when the user is not an active member.
-    def remove_member(uuid, user_id)
-      delete("/api/v1/conversations/#{Util.escape_segment(uuid)}/members/#{Integer(user_id)}")
+    # Remove one member (identified by uuid) from a group (owner/admin; cannot
+    # remove self or the owner). Idempotent when the user is not an active
+    # member.
+    def remove_member(uuid, user_uuid)
+      delete("/api/v1/conversations/#{Util.escape_segment(uuid)}/members/#{Util.escape_segment(user_uuid)}")
     end
 
     # ---- Messages ----

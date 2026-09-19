@@ -89,7 +89,7 @@ im.on("status", (s) => console.log("connection:", s));
 im.connect();
 
 // 首次打开某个会话：拉历史并开始跟踪该会话的实时同步
-const { id } = await im.createDirect(otherUserId);
+const { id } = await im.createDirect(otherUserUuid);
 const history = await im.history(id);   // 返回按 sequence 升序的全部消息
 
 // 发送（SDK 自动生成 Idempotency-Key，网络失败自动用同一 key 重试，不会重发）
@@ -130,12 +130,12 @@ App({
 | --- | --- |
 | `im.me()` | `GET /api/v1/me` |
 | `im.listGroups()` | `GET /api/v1/conversations?type=group` |
-| `im.createConversation({kind, memberIds, title?})` | `POST /api/v1/conversations` |
-| `im.createDirect(otherUserId)` | 同上（direct get-or-create） |
-| `im.createGroup(title, memberIds)` | `POST /api/v1/group` |
+| `im.createConversation({kind, memberUuids, title?})` | `POST /api/v1/conversations` |
+| `im.createDirect(otherUserUuid)` | 同上（direct get-or-create） |
+| `im.createGroup(title, memberUuids)` | `POST /api/v1/group` |
 | `im.getConversation(uuid)` | `GET /api/v1/conversations/:uuid` |
-| `im.addMembers(conversationId, memberIds)` | `POST .../members` |
-| `im.removeMember(conversationId, userId)` | `DELETE .../members/:user_id` |
+| `im.addMembers(conversationId, memberUuids)` | `POST .../members` |
+| `im.removeMember(conversationId, userUuid)` | `DELETE .../members/:user_uuid` |
 | `im.history(conversationId, {fromSequence?, limit?})` | 拉历史 + 开始跟踪同步 |
 | `im.listMessages(conversationId, {afterSequence?, limit?})` | `GET .../messages`（原始分页） |
 | `im.sendMessage(conversationId, content, opts?)` | `POST /api/v1/messages` |

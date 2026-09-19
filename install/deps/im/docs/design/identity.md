@@ -105,19 +105,17 @@ handed to the client by its own platform:
 2. After the login succeeds, the platform's backend reads `(name, uuid)`
    from its own user table and obtains the credential
    **server-to-server**: it calls the Airway project's minting endpoint
-   `POST /internal/v1/credentials` with `IM_INTERNAL_SECRET` (§4.3), or
-   — where the Airway project operator hands out the signing secret — signs
-   locally with `IM_AUTH_SECRET` in any language (§4.2; HMAC-SHA256 is
-   a standard primitive, no Go code involved). Either way, plaintext
+   `POST /internal/v1/credentials` with `IM_INTERNAL_SECRET` (§4.3).
+   Platform backends are never given the signing secret, and plaintext
    `(name, uuid)` is never accepted from a client.
 3. The platform's backend returns the finished credential in its login
    response; the client only carries and presents it (§5). It holds no
    secret: it can neither mint nor alter a credential.
 
-The preferred resale path is the minting API: `IM_AUTH_SECRET` never
-leaves the Airway service, platform backends hold only
-`IM_INTERNAL_SECRET`, and minted credentials carry `token_version`, so
-each platform's users stay individually revocable (§9.1).
+The only path for third-party platform backends is the minting API:
+`IM_AUTH_SECRET` never leaves the Airway service, platform backends hold
+only `IM_INTERNAL_SECRET`, and minted credentials carry `token_version`,
+so each platform's users stay individually revocable (§9.1).
 
 Two hard consequences follow:
 
@@ -145,9 +143,10 @@ the HMAC before trusting the claims.
 The Airway backend signs locally with `IM_AUTH_SECRET`. This adds no
 network hop to the login flow, and HMAC-SHA256 is a standard primitive
 available in every server language (Go, Node.js, Python, PHP, Java, …)
-— no Go code is embedded anywhere. In a resale topology this option is
-for platforms the operator explicitly trusts with the signing secret;
-otherwise integrate through the minting API (§4.3).
+— no Go code is embedded anywhere. This option is reserved for the
+Airway project's own backend: third-party platform backends in a resale
+topology always integrate through the minting API (§4.3) and are never
+given the signing secret.
 
 Go:
 
@@ -321,9 +320,10 @@ Every successful verification resolves the claims onto the `users` table
    authenticating every HTTP request does not become a write on every
    request.
 
-The internal numeric `users.id` is what conversations, messages, and
-gateway routing reference; the Airway project's `uuid` never appears in delivery
-events or inter-service traffic.
+Client APIs reference conversation members by the Airway project's `uuid`
+(conversation creation, member management); internally the numeric `users.id`
+still links `conversation_members` rows and routes delivery. The `uuid` never
+appears in delivery events or inter-service traffic.
 
 ## 7. Admin visibility
 

@@ -138,7 +138,7 @@ paths:
       description: >-
         A direct request is get-or-create and can return 200 when the canonical
         conversation already exists. Every group request creates a new group.
-        The authenticated creator must not be included in member_ids.
+        The authenticated creator must not be included in member_uuids.
       security:
         - bearerAuth: []
       requestBody:
@@ -151,12 +151,12 @@ paths:
               direct:
                 value:
                   kind: direct
-                  member_ids: [2]
+                  member_uuids: [user-2]
               group:
                 value:
                   kind: group
                   title: Airway IM Backend
-                  member_ids: [2, 3]
+                  member_uuids: [user-2, user-3]
       responses:
         '200':
           description: Existing canonical direct conversation.
@@ -186,9 +186,10 @@ paths:
       summary: Create a group conversation
       description: >-
         Creates a new group on every successful request. The authenticated user
-        becomes the owner. member_ids identifies the other users to add as
-        members; duplicate IDs and the authenticated user's ID are removed.
-        After normalization, at least one other existing user is required.
+        becomes the owner. member_uuids identifies the other users to add as
+        members by their stable uuid; duplicate uuids and the authenticated
+        user's own uuid are removed. After normalization, at least one other
+        existing user is required.
       security:
         - bearerAuth: []
       requestBody:
@@ -199,7 +200,7 @@ paths:
               $ref: '#/components/schemas/CreateGroupRequest'
             example:
               title: Airway IM Backend
-              member_ids: [2, 3]
+              member_uuids: [user-2, user-3]
       responses:
         '201':
           description: Group conversation created.
@@ -250,11 +251,13 @@ paths:
                   type: group
                   members:
                     - id: 1
+                      uuid: user-1
                       username: owner
                       nickname: Owner
                       avatar_url: https://avatars.example.com/owner.png
                       role: owner
                     - id: 2
+                      uuid: user-2
                       username: member
                       nickname: null
                       avatar_url: null
@@ -305,7 +308,7 @@ paths:
             schema:
               $ref: '#/components/schemas/AddMembersRequest'
             example:
-              member_ids: [4, 5]
+              member_uuids: [user-4, user-5]
       responses:
         '200':
           description: Updated conversation details with the active member list.
@@ -360,14 +363,14 @@ paths:
           description: Opaque conversation identifier.
           schema:
             $ref: '#/components/schemas/ULID'
-        - name: user_id
+        - name: user_uuid
           in: path
           required: true
-          description: Numeric ID of the user to remove.
+          description: Stable uuid of the user to remove.
           schema:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            minLength: 1
+            maxLength: 64
       responses:
         '200':
           description: Updated conversation details with the active member list.
@@ -378,7 +381,7 @@ paths:
         '400':
           description: >-
             Invalid or expired credential, malformed conversation UUID or user
-            ID, non-group conversation, self-removal, or the target is the
+            UUID, non-group conversation, self-removal, or the target is the
             group owner.
           content:
             application/json:
@@ -1044,11 +1047,14 @@ components:
     ConversationMember:
       type: object
       additionalProperties: false
-      required: [id, username, nickname, avatar_url, role]
+      required: [id, uuid, username, nickname, avatar_url, role]
       properties:
         id:
           type: integer
           format: int64
+        uuid:
+          type: string
+          description: Stable, unique identity assigned by the Airway application.
         username:
           type: string
         nickname:
@@ -1213,24 +1219,25 @@ components:
     AddMembersRequest:
       type: object
       additionalProperties: false
-      required: [member_ids]
+      required: [member_uuids]
       properties:
-        member_ids:
+        member_uuids:
           type: array
           minItems: 1
           items:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            minLength: 1
+            maxLength: 64
           description: >-
-            Users to add. Duplicates and the authenticated user's ID are
-            removed; at least one other user must remain. All IDs must exist;
-            already-active members are skipped.
+            Users to add, by their stable uuid. Duplicates, empty values, and
+            the authenticated user's own uuid are removed; at least one other
+            user must remain. All uuids must exist; already-active members are
+            skipped.
 
     CreateConversationRequest:
       type: object
       additionalProperties: false
-      required: [kind, member_ids]
+      required: [kind, member_uuids]
       properties:
         kind:
           type: string
@@ -1238,35 +1245,37 @@ components:
         title:
           type: [string, 'null']
           description: Group display title; currently accepted for either kind.
-        member_ids:
+        member_uuids:
           type: array
           minItems: 1
           items:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            minLength: 1
+            maxLength: 64
           description: >-
-            Other users to add. Duplicates and the authenticated user's ID are
-            removed. Direct conversations must resolve to exactly one other user.
+            Other users to add, by their stable uuid. Duplicates, empty values,
+            and the authenticated user's own uuid are removed. Direct
+            conversations must resolve to exactly one other user.
 
     CreateGroupRequest:
       type: object
       additionalProperties: false
-      required: [member_ids]
+      required: [member_uuids]
       properties:
         title:
           type: [string, 'null']
           description: Optional group display title.
-        member_ids:
+        member_uuids:
           type: array
           minItems: 1
           items:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            minLength: 1
+            maxLength: 64
           description: >-
-            Users to add as members. Duplicates and the authenticated user's ID
-            are removed; at least one other existing user must remain.
+            Users to add as members, by their stable uuid. Duplicates, empty
+            values, and the authenticated user's own uuid are removed; at least
+            one other existing user must remain.
 
     CreateMessageRequest:
       type: object

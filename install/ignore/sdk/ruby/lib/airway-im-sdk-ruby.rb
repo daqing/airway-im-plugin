@@ -17,7 +17,7 @@
 #   # Call the IM API on the user's behalf
 #   im = AirwayIM::Client.new(api_url: "https://im.example.com", credential: minted.credential)
 #   im.me
-#   conversation = im.create_direct(2)
+#   conversation = im.create_direct("user-2")
 #   im.send_message(conversation["id"], "Hello **team**!")
 
 require_relative "airway-im-sdk-ruby/version"

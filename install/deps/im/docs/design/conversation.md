@@ -217,7 +217,7 @@ Content-Type: application/json
 {
   "kind": "group",
   "title": "Airway IM Backend",
-  "member_ids": [2, 3, 4]
+  "member_uuids": ["user-2", "user-3", "user-4"]
 }
 ```
 

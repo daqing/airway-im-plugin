@@ -26,6 +26,7 @@ export type MemberRole = "owner" | "admin" | "member";
 
 export interface ConversationMember {
   id: number;
+  uuid: string;
   username: string;
   nickname: string | null;
   avatar_url: string | null;

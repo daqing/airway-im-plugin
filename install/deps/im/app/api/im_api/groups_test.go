@@ -125,7 +125,7 @@ func setupGroupTestRouter(t *testing.T) *gin.Engine {
 func TestCreateGroup(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/group", strings.NewReader(
-		`{"title":"Backend Team","member_ids":[2,3,2,1]}`,
+		`{"title":"Backend Team","member_uuids":["uuid-bob","uuid-alice","uuid-bob","uuid-owner"]}`,
 	))
 	request.Header.Set("Authorization", "Bearer "+groupOwnerCredential(t))
 	request.Header.Set("Content-Type", "application/json")
@@ -167,10 +167,10 @@ func TestCreateGroupRejectsInvalidRequests(t *testing.T) {
 		name string
 		body string
 	}{
-		{name: "invalid JSON", body: `{"member_ids":`},
-		{name: "unknown field", body: `{"member_ids":[2],"kind":"direct"}`},
-		{name: "no other members", body: `{"member_ids":[1,0,-2]}`},
-		{name: "unknown member", body: `{"member_ids":[999]}`},
+		{name: "invalid JSON", body: `{"member_uuids":`},
+		{name: "unknown field", body: `{"member_uuids":["uuid-bob"],"kind":"direct"}`},
+		{name: "no other members", body: `{"member_uuids":["uuid-owner",""]}`},
+		{name: "unknown member", body: `{"member_uuids":["uuid-nobody"]}`},
 	}
 
 	for _, test := range tests {
@@ -197,7 +197,7 @@ func TestCreateGroupRejectsInvalidRequests(t *testing.T) {
 
 func TestCreateGroupRequiresAuthentication(t *testing.T) {
 	router := setupGroupTestRouter(t)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/group", strings.NewReader(`{"member_ids":[2]}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/group", strings.NewReader(`{"member_uuids":["uuid-bob"]}`))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -332,8 +332,8 @@ func TestGetConversationReturnsTypeAndActiveMembers(t *testing.T) {
 		t.Fatalf("unexpected conversation: %#v", body)
 	}
 	if len(body.Data.Members) != 2 ||
-		body.Data.Members[0].ID != 1 || body.Data.Members[0].Role != "owner" ||
-		body.Data.Members[1].ID != 2 || body.Data.Members[1].Role != "member" {
+		body.Data.Members[0].ID != 1 || body.Data.Members[0].UUID != "uuid-owner" || body.Data.Members[0].Role != "owner" ||
+		body.Data.Members[1].ID != 2 || body.Data.Members[1].UUID != "uuid-alice" || body.Data.Members[1].Role != "member" {
 		t.Fatalf("unexpected members: %#v", body.Data.Members)
 	}
 }

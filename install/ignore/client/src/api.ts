@@ -25,6 +25,7 @@ export interface Conversation {
 
 export interface ConversationMember {
   id: number;
+  uuid: string;
   username: string;
   nickname: string | null;
   avatar_url: string | null;
@@ -193,10 +194,10 @@ export class IMClient {
     return this.request<Conversation[]>("GET", "/api/v1/conversations?type=group");
   }
 
-  createGroup(title: string | null, memberIds: number[]): Promise<Conversation> {
+  createGroup(title: string | null, memberUuids: string[]): Promise<Conversation> {
     return this.request<Conversation>("POST", "/api/v1/group", {
       title,
-      member_ids: memberIds,
+      member_uuids: memberUuids,
     });
   }
 
@@ -207,18 +208,18 @@ export class IMClient {
     );
   }
 
-  addMembers(conversationId: string, memberIds: number[]): Promise<ConversationDetails> {
+  addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails> {
     return this.request<ConversationDetails>(
       "POST",
       `/api/v1/conversations/${encodeURIComponent(conversationId)}/members`,
-      { member_ids: memberIds },
+      { member_uuids: memberUuids },
     );
   }
 
-  removeMember(conversationId: string, userId: number): Promise<ConversationDetails> {
+  removeMember(conversationId: string, userUuid: string): Promise<ConversationDetails> {
     return this.request<ConversationDetails>(
       "DELETE",
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${userId}`,
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userUuid)}`,
     );
   }
 

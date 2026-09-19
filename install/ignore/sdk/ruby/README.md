@@ -1,22 +1,22 @@
 # airway-im-sdk-ruby
 
 The Ruby SDK for [Airway IM](https://github.com/daqing/airway-im-plugin): it
-wraps the backend's REST API, credential signing, and the internal minting
-endpoint into ready-to-use Ruby interfaces, so Ruby projects (Rails / Sinatra
-/ any Ruby service) never have to implement credential signing, envelope
-parsing, idempotent retries, or automatic credential renewal themselves.
+wraps the backend's REST API and the credential-minting endpoint into
+ready-to-use Ruby interfaces, so Ruby projects (Rails / Sinatra / any Ruby
+service) never have to implement minting calls, envelope parsing, idempotent
+retries, or automatic credential renewal themselves.
 
 Zero runtime dependencies — standard library only (`Net::HTTP` / `JSON` /
 `OpenSSL` / `SecureRandom`).
 
 **Positioning**: this is a **server-side SDK**. It covers every scenario in
-which a Ruby backend integrates with IM — issuing or minting credentials for
-your users, calling the IM API as any user, and admin operations. For
-realtime WebSocket send/receive in browsers or Mini Programs, pair your front
-end with the JS/TS SDK ([`airway-im-sdk-ts`](../ts/), which includes the sync
-engine); a Ruby side that needs to listen for new messages (bots,
-notifications) can simply poll the sequence-based sync API (see `each_message`
-below).
+which a Ruby backend integrates with IM — minting credentials for your users
+through the internal API, calling the IM API as any user, and admin
+operations. For realtime WebSocket send/receive in browsers or Mini Programs,
+pair your front end with the JS/TS SDK ([`airway-im-sdk-ts`](../ts/), which
+includes the sync engine); a Ruby side that needs to listen for new messages
+(bots, notifications) can simply poll the sequence-based sync API (see
+`each_message` below).
 
 ## Installation
 
@@ -40,27 +40,12 @@ require "airway-im-sdk-ruby"
 
 The SDK contains no login logic. The user first logs in on your platform
 (password, SMS code, …); once login succeeds, **your server backend** reads
-`(uuid, name)` from its own user table and obtains the IM credential one of
-two ways, returning it to the client together with your own login response:
-
-**Option A: sign locally** (when your backend is trusted with
-`IM_AUTH_SECRET`) — no network hop:
-
-```ruby
-credential = AirwayIM::Credentials.sign(
-  secret: ENV["IM_AUTH_SECRET"],
-  uuid: "user-42",          # stable unique ID on your platform
-  name: "alice",            # username (the IM user is registered/refreshed at sign time)
-  nickname: "Alice",        # optional, only written when present
-  avatar_url: "https://…",  # optional
-  ttl: 86_400,              # optional, 24 hours by default; nil never expires (service credentials only)
-)
-```
-
-**Option B: the internal minting endpoint** (recommended for third-party
-platforms) — your backend only holds `IM_INTERNAL_SECRET`; the signing secret
-`IM_AUTH_SECRET` never leaves the IM server, and minted credentials carry
-`token_version`, so each user can be revoked through the admin API:
+`(uuid, name)` from its own user table and obtains the IM credential by
+calling the IM service's **internal minting endpoint** server-to-server,
+returning it to the client together with your own login response. Your
+backend only holds `IM_INTERNAL_SECRET`; the signing secret `IM_AUTH_SECRET`
+never leaves the IM server, and minted credentials carry `token_version`, so
+each user can be revoked through the admin API:
 
 ```ruby
 internal = AirwayIM::InternalClient.new(
@@ -73,6 +58,11 @@ minted = internal.mint_credential(uuid: "user-42", name: "alice",
 credential = minted.credential          # "im1.…"
 minted.expires_at                       # ISO8601 string; nil when ttl_seconds: 0
 ```
+
+Third-party platform backends can obtain credentials **only** through the
+internal minting endpoint: local signing (holding `IM_AUTH_SECRET` and
+computing the HMAC yourself) is reserved for the Airway project's own
+backend — platform-side code never holds the signing secret.
 
 Two things must be kept straight (full trust model in
 [identity.md](../../deps/im/docs/design/identity.md)):
@@ -96,8 +86,8 @@ im = AirwayIM::Client.new(
 )
 
 im.me                                     # current user profile
-conversation = im.create_direct(2)        # direct conversation with user 2 (get-or-create)
-im.create_group(member_ids: [2, 3], title: "Backend Team")
+conversation = im.create_direct("user-2") # direct conversation with the user whose uuid is "user-2" (get-or-create)
+im.create_group(member_uuids: ["user-2", "user-3"], title: "Backend Team")
 im.list_groups                            # groups I belong to
 im.conversation(conversation["id"])       # conversation kind + members with roles
 
@@ -126,12 +116,12 @@ it to create conversations and send messages.
 | --- | --- |
 | `me` | `GET /api/v1/me` |
 | `list_groups` | `GET /api/v1/conversations?type=group` |
-| `create_conversation(kind:, member_ids:, title: nil)` | `POST /api/v1/conversations` |
-| `create_direct(other_user_id)` | Same (direct get-or-create) |
-| `create_group(member_ids:, title: nil)` | `POST /api/v1/group` |
+| `create_conversation(kind:, member_uuids:, title: nil)` | `POST /api/v1/conversations` |
+| `create_direct(other_uuid)` | Same (direct get-or-create) |
+| `create_group(member_uuids:, title: nil)` | `POST /api/v1/group` |
 | `conversation(uuid)` | `GET /api/v1/conversations/:uuid` |
-| `add_members(uuid, member_ids)` | `POST .../members` (owner/admin, idempotent) |
-| `remove_member(uuid, user_id)` | `DELETE .../members/:user_id` (owner/admin) |
+| `add_members(uuid, member_uuids)` | `POST .../members` (owner/admin, idempotent) |
+| `remove_member(uuid, user_uuid)` | `DELETE .../members/:user_uuid` (owner/admin) |
 | `messages(uuid, after_sequence: nil, limit: nil)` | `GET .../messages` (raw paging, limit 1–200) |
 | `each_message(uuid, after_sequence: 0, page_size: 100)` | Auto-paging Enumerator over the history, ascending |
 | `send_message(conversation_id, content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
@@ -146,7 +136,11 @@ fresh credential and retries once; the `credential` field is updated),
 (default) and `text/plain`; content is limited to 32768 bytes and the server
 normalizes CRLF to LF.
 
-### `AirwayIM::Credentials` (local signing, option A)
+### `AirwayIM::Credentials` (signing and verification helpers)
+
+Local signing with `sign` is for trusted holders of `IM_AUTH_SECRET` on the
+Airway project's own side; third-party platform backends never hold that
+secret and must use `InternalClient#mint_credential` instead.
 
 | Method | Description |
 | --- | --- |

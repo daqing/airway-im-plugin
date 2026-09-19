@@ -43,24 +43,24 @@ module AirwayIM
       client = with_server do |req|
         assert_equal "POST", req.method
         assert_equal "/api/v1/conversations", req.path
-        assert_equal({ "kind" => "direct", "member_ids" => [2] }, JSON.parse(req.body))
+        assert_equal({ "kind" => "direct", "member_uuids" => ["uuid-bob"] }, JSON.parse(req.body))
         [201, envelope(conversation)]
       end
-      assert_equal conversation, client.create_direct(2)
+      assert_equal conversation, client.create_direct("uuid-bob")
     end
 
     def test_create_group_omits_nil_title
       client = with_server do |req|
         body = JSON.parse(req.body)
         if req.path == "/api/v1/group"
-          assert_equal({ "member_ids" => [2, 3] }, body)
+          assert_equal({ "member_uuids" => %w[uuid-bob uuid-carol] }, body)
         else
-          assert_equal({ "kind" => "group", "member_ids" => [2, 3] }, body)
+          assert_equal({ "kind" => "group", "member_uuids" => %w[uuid-bob uuid-carol] }, body)
         end
         [201, envelope({ "id" => "01AC", "kind" => "group" })]
       end
-      client.create_group(member_ids: [2, 3])
-      client.create_conversation(kind: "group", member_ids: [2, 3])
+      client.create_group(member_uuids: %w[uuid-bob uuid-carol])
+      client.create_conversation(kind: "group", member_uuids: %w[uuid-bob uuid-carol])
     end
 
     def test_conversation_and_member_management_escape_ids
@@ -68,13 +68,13 @@ module AirwayIM
         case req.method
         when "GET" then assert_equal "/api/v1/conversations/01%20AB", req.path
         when "POST" then assert_equal "/api/v1/conversations/01%20AB/members", req.path
-        when "DELETE" then assert_equal "/api/v1/conversations/01%20AB/members/7", req.path
+        when "DELETE" then assert_equal "/api/v1/conversations/01%20AB/members/uuid%20carol", req.path
         end
         [200, envelope({ "conversation_uuid" => "01 AB", "type" => "group", "members" => [] })]
       end
       client.conversation("01 AB")
-      client.add_members("01 AB", [7])
-      client.remove_member("01 AB", 7)
+      client.add_members("01 AB", ["uuid-carol"])
+      client.remove_member("01 AB", "uuid carol")
     end
 
     def test_messages_sends_sequence_query

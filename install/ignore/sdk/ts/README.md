@@ -53,11 +53,11 @@ The SDK contains no login logic and does not handle authentication. The user
 first logs in on your platform (password, SMS code, WeChat `code2session`,
 …). Once login succeeds, **your platform's own server backend** (PHP, Java, or
 any language) reads `(name, uuid)` from its own user table and obtains the
-credential **server-to-server** — calling the internal minting endpoint
+credential **server-to-server** by calling the internal minting endpoint
 `POST /internal/v1/credentials` on the Airway project's IM service (with
-`X-IM-Internal-Secret`), or signing it locally — then returns the finished
-credential together with your own session token in the login response
-(valid for 24 hours; mint a fresh one before expiry).
+`X-IM-Internal-Secret`), then returns the finished credential together with
+your own session token in the login response (valid for 24 hours; mint a
+fresh one before expiry).
 
 Two things must be kept straight:
 
@@ -111,7 +111,7 @@ im.connect();
 
 // Opening a conversation for the first time: pull history and start
 // tracking realtime sync for it
-const { id } = await im.createDirect(otherUserId);
+const { id } = await im.createDirect(otherUserUuid);
 const history = await im.history(id);   // all messages, ascending sequence
 
 // Sending (the SDK generates the Idempotency-Key automatically and retries
@@ -155,12 +155,12 @@ App({
 | --- | --- |
 | `im.me()` | `GET /api/v1/me` |
 | `im.listGroups()` | `GET /api/v1/conversations?type=group` |
-| `im.createConversation({kind, memberIds, title?})` | `POST /api/v1/conversations` |
-| `im.createDirect(otherUserId)` | Same (direct get-or-create) |
-| `im.createGroup(title, memberIds)` | `POST /api/v1/group` |
+| `im.createConversation({kind, memberUuids, title?})` | `POST /api/v1/conversations` |
+| `im.createDirect(otherUserUuid)` | Same (direct get-or-create) |
+| `im.createGroup(title, memberUuids)` | `POST /api/v1/group` |
 | `im.getConversation(uuid)` | `GET /api/v1/conversations/:uuid` |
-| `im.addMembers(conversationId, memberIds)` | `POST .../members` |
-| `im.removeMember(conversationId, userId)` | `DELETE .../members/:user_id` |
+| `im.addMembers(conversationId, memberUuids)` | `POST .../members` |
+| `im.removeMember(conversationId, userUuid)` | `DELETE .../members/:user_uuid` |
 | `im.history(conversationId, {fromSequence?, limit?})` | Pull history + start tracking sync |
 | `im.listMessages(conversationId, {afterSequence?, limit?})` | `GET .../messages` (raw paging) |
 | `im.sendMessage(conversationId, content, opts?)` | `POST /api/v1/messages` |

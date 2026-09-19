@@ -140,7 +140,7 @@ async function main(): Promise<void> {
   ok("gateway online for both users", alice.isOnline && bob.isOnline);
 
   // ---- Direct conversation + realtime fan-out ----
-  const direct = await alice.createDirect(bobMe.id);
+  const direct = await alice.createDirect(bobMe.uuid);
   ok("direct get-or-create", direct.kind === "direct" && direct.id.length === 26);
   await bob.history(direct.id); // track the conversation before traffic flows
 
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
   );
 
   // ---- Group conversation ----
-  const group = await alice.createGroup("SDK E2E Group", [bobMe.id]);
+  const group = await alice.createGroup("SDK E2E Group", [bobMe.uuid]);
   ok("group created", group.kind === "group");
 
   const bobGroups = await bob.listGroups();
@@ -190,12 +190,12 @@ async function main(): Promise<void> {
   }
 
   // ---- Member management + events ----
-  const details = await alice.addMembers(group.id, [carolMe.id]);
-  ok("addMembers returns details with carol", details.members.some((m) => m.id === carolMe.id));
+  const details = await alice.addMembers(group.id, [carolMe.uuid]);
+  ok("addMembers returns details with carol", details.members.some((m) => m.uuid === carolMe.uuid));
   await waitFor("bob sees members.added event", () => bobEvents.added > 0);
 
-  const removedDetails = await alice.removeMember(group.id, carolMe.id);
-  ok("removeMember drops carol", !removedDetails.members.some((m) => m.id === carolMe.id));
+  const removedDetails = await alice.removeMember(group.id, carolMe.uuid);
+  ok("removeMember drops carol", !removedDetails.members.some((m) => m.uuid === carolMe.uuid));
   await waitFor("bob sees members.removed event", () => bobEvents.removed > 0);
 
   // Carol (kicked) must be denied group access now.
@@ -288,7 +288,7 @@ async function browserAdapterPhase(): Promise<void> {
   await waitOnline(bob);
   ok("browserAdapter: gateway online", alice.isOnline && bob.isOnline);
 
-  const direct = await alice.createDirect(bobMe.id);
+  const direct = await alice.createDirect(bobMe.uuid);
   await bob.history(direct.id);
   const sent = await alice.sendMessage(direct.id, "hello from the browser adapter");
   const received = await waitFor("browserAdapter: realtime receive", () =>

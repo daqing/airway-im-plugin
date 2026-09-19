@@ -63,7 +63,7 @@ func TestAddMembersByOwner(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	conversationUUID := seedGroup(t)
 
-	response := postAddMembers(t, router, groupOwnerCredential(t), conversationUUID, `{"member_ids":[4,4,1,0]}`)
+	response := postAddMembers(t, router, groupOwnerCredential(t), conversationUUID, `{"member_uuids":["uuid-carol","uuid-carol","uuid-owner",""]}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -78,7 +78,7 @@ func TestAddMembersByOwner(t *testing.T) {
 		t.Fatalf("unexpected members: %#v", body.Data.Members)
 	}
 	newest := body.Data.Members[len(body.Data.Members)-1]
-	if newest.ID != 4 || newest.Username != "carol" || newest.Role != "member" {
+	if newest.ID != 4 || newest.UUID != "uuid-carol" || newest.Username != "carol" || newest.Role != "member" {
 		t.Fatalf("unexpected new member: %#v", newest)
 	}
 
@@ -104,16 +104,16 @@ func TestAddMembersRejoinsFormerMember(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	conversationUUID := seedGroup(t)
 
-	response := postAddMembers(t, router, groupOwnerCredential(t), conversationUUID, `{"member_ids":[3]}`)
+	response := postAddMembers(t, router, groupOwnerCredential(t), conversationUUID, `{"member_uuids":["uuid-bob"]}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 
 	db := repo.CurrentDB()
 	var rejoined struct {
-		Role    string  `db:"role"`
-		LeftAt  *string `db:"left_at"`
-		RowCount int    `db:"row_count"`
+		Role     string  `db:"role"`
+		LeftAt   *string `db:"left_at"`
+		RowCount int     `db:"row_count"`
 	}
 	if err := db.Get(&rejoined.RowCount, "SELECT COUNT(*) FROM conversation_members WHERE conversation_id = ? AND user_id = 3", conversationUUID); err != nil {
 		t.Fatalf("count rows: %v", err)
@@ -130,7 +130,7 @@ func TestAddMembersSkipsActiveMembersWithoutEvent(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	conversationUUID := seedGroup(t)
 
-	response := postAddMembers(t, router, groupOwnerCredential(t), conversationUUID, `{"member_ids":[2]}`)
+	response := postAddMembers(t, router, groupOwnerCredential(t), conversationUUID, `{"member_uuids":["uuid-alice"]}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -156,7 +156,7 @@ func TestAddMembersAdminAllowedMemberForbidden(t *testing.T) {
 		t.Fatalf("promote admin: %v", err)
 	}
 
-	response := postAddMembers(t, router, memberCredential(t, 2, "alice"), conversationUUID, `{"member_ids":[4]}`)
+	response := postAddMembers(t, router, memberCredential(t, 2, "alice"), conversationUUID, `{"member_uuids":["uuid-carol"]}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("admin add: status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -164,7 +164,7 @@ func TestAddMembersAdminAllowedMemberForbidden(t *testing.T) {
 	if _, err := db.Exec("UPDATE conversation_members SET role = 'member' WHERE conversation_id = ? AND user_id = 2", conversationUUID); err != nil {
 		t.Fatalf("demote member: %v", err)
 	}
-	response = postAddMembers(t, router, memberCredential(t, 2, "alice"), conversationUUID, `{"member_ids":[3]}`)
+	response = postAddMembers(t, router, memberCredential(t, 2, "alice"), conversationUUID, `{"member_uuids":["uuid-bob"]}`)
 	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"code":10005`) {
 		t.Fatalf("member add: status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -179,42 +179,42 @@ func TestAddMembersRejectsInvalidRequests(t *testing.T) {
 		expectedCode int
 	}{
 		{
-			name:       "invalid UUID",
-			setup:      func(t *testing.T) string { return "invalid" },
-			credential: func(t *testing.T) string { return groupOwnerCredential(t) },
-			body:       `{"member_ids":[4]}`,
+			name:         "invalid UUID",
+			setup:        func(t *testing.T) string { return "invalid" },
+			credential:   func(t *testing.T) string { return groupOwnerCredential(t) },
+			body:         `{"member_uuids":["uuid-carol"]}`,
 			expectedCode: http.StatusBadRequest,
 		},
 		{
-			name:       "unknown conversation",
-			setup:      func(t *testing.T) string { return "01J2Q7D4N5R8TK6VD3SZ1H0Y7M" },
-			credential: func(t *testing.T) string { return groupOwnerCredential(t) },
-			body:       `{"member_ids":[4]}`,
+			name:         "unknown conversation",
+			setup:        func(t *testing.T) string { return "01J2Q7D4N5R8TK6VD3SZ1H0Y7M" },
+			credential:   func(t *testing.T) string { return groupOwnerCredential(t) },
+			body:         `{"member_uuids":["uuid-carol"]}`,
 			expectedCode: http.StatusNotFound,
 		},
 		{
-			name:       "caller not a member",
-			setup:      seedGroup,
-			credential: func(t *testing.T) string { return memberCredential(t, 4, "carol") },
-			body:       `{"member_ids":[2]}`,
+			name:         "caller not a member",
+			setup:        seedGroup,
+			credential:   func(t *testing.T) string { return memberCredential(t, 4, "carol") },
+			body:         `{"member_uuids":["uuid-alice"]}`,
 			expectedCode: http.StatusNotFound,
 		},
 		{
-			name:       "no members after normalization",
-			setup:      seedGroup,
-			credential: func(t *testing.T) string { return groupOwnerCredential(t) },
-			body:       `{"member_ids":[1,0,-2]}`,
+			name:         "no members after normalization",
+			setup:        seedGroup,
+			credential:   func(t *testing.T) string { return groupOwnerCredential(t) },
+			body:         `{"member_uuids":["uuid-owner",""]}`,
 			expectedCode: http.StatusBadRequest,
 		},
 		{
-			name:       "unknown user",
-			setup:      seedGroup,
-			credential: func(t *testing.T) string { return groupOwnerCredential(t) },
-			body:       `{"member_ids":[999]}`,
+			name:         "unknown user",
+			setup:        seedGroup,
+			credential:   func(t *testing.T) string { return groupOwnerCredential(t) },
+			body:         `{"member_uuids":["uuid-nobody"]}`,
 			expectedCode: http.StatusBadRequest,
 		},
 		{
-			name:       "direct conversation",
+			name: "direct conversation",
 			setup: func(t *testing.T) string {
 				db := repo.CurrentDB()
 				if _, err := db.Exec(`INSERT INTO conversations (id, kind, created_by, next_sequence, created_at, updated_at)
@@ -227,8 +227,8 @@ func TestAddMembersRejectsInvalidRequests(t *testing.T) {
 				}
 				return "01DIRECT0000000000000000001"
 			},
-			credential: func(t *testing.T) string { return groupOwnerCredential(t) },
-			body:       `{"member_ids":[4]}`,
+			credential:   func(t *testing.T) string { return groupOwnerCredential(t) },
+			body:         `{"member_uuids":["uuid-carol"]}`,
 			expectedCode: http.StatusBadRequest,
 		},
 	}
@@ -248,15 +248,15 @@ func TestAddMembersRejectsInvalidRequests(t *testing.T) {
 func TestAddMembersRequiresAuthentication(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	conversationUUID := seedGroup(t)
-	response := postAddMembers(t, router, "", conversationUUID, `{"member_ids":[4]}`)
+	response := postAddMembers(t, router, "", conversationUUID, `{"member_uuids":["uuid-carol"]}`)
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":10001`) {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
-func deleteMember(t *testing.T, router http.Handler, credential, conversationUUID, userID string) *httptest.ResponseRecorder {
+func deleteMember(t *testing.T, router http.Handler, credential, conversationUUID, userUUID string) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequest(http.MethodDelete, "/api/v1/conversations/"+conversationUUID+"/members/"+userID, nil)
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/conversations/"+conversationUUID+"/members/"+userUUID, nil)
 	if credential != "" {
 		request.Header.Set("Authorization", "Bearer "+credential)
 	}
@@ -269,7 +269,7 @@ func TestRemoveMemberByOwner(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	conversationUUID := seedGroup(t)
 
-	response := deleteMember(t, router, groupOwnerCredential(t), conversationUUID, "2")
+	response := deleteMember(t, router, groupOwnerCredential(t), conversationUUID, "uuid-alice")
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -312,12 +312,12 @@ func TestRemoveMemberIsIdempotentNoop(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	conversationUUID := seedGroup(t)
 
-	// User 3 already left; user 4 was never a member. Both removals succeed
+	// Bob already left; carol was never a member. Both removals succeed
 	// without state changes or events.
-	for _, userID := range []string{"3", "4"} {
-		response := deleteMember(t, router, groupOwnerCredential(t), conversationUUID, userID)
+	for _, userUUID := range []string{"uuid-bob", "uuid-carol"} {
+		response := deleteMember(t, router, groupOwnerCredential(t), conversationUUID, userUUID)
 		if response.Code != http.StatusOK {
-			t.Fatalf("remove %s: status = %d, body = %s", userID, response.Code, response.Body.String())
+			t.Fatalf("remove %s: status = %d, body = %s", userUUID, response.Code, response.Body.String())
 		}
 	}
 	var eventCount int
@@ -333,14 +333,14 @@ func TestRemoveMemberRoleRules(t *testing.T) {
 	tests := []struct {
 		name         string
 		caller       string // owner | admin | member
-		target       string // user id to remove
+		target       string // uuid of the user to remove
 		setup        func(t *testing.T, db_role string)
 		expectedCode int
 	}{
-		{name: "admin removes member", caller: "admin", target: "4", expectedCode: http.StatusOK},
-		{name: "admin cannot remove admin", caller: "admin", target: "3", expectedCode: http.StatusForbidden},
-		{name: "member cannot remove", caller: "member", target: "4", expectedCode: http.StatusForbidden},
-		{name: "owner cannot be removed", caller: "owner", target: "1", expectedCode: http.StatusBadRequest},
+		{name: "admin removes member", caller: "admin", target: "uuid-carol", expectedCode: http.StatusOK},
+		{name: "admin cannot remove admin", caller: "admin", target: "uuid-bob", expectedCode: http.StatusForbidden},
+		{name: "member cannot remove", caller: "member", target: "uuid-carol", expectedCode: http.StatusForbidden},
+		{name: "owner cannot be removed", caller: "owner", target: "uuid-owner", expectedCode: http.StatusBadRequest},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -374,7 +374,7 @@ func TestRemoveMemberOwnerRemovesAdmin(t *testing.T) {
 	if _, err := db.Exec("UPDATE conversation_members SET left_at = NULL, role = 'admin' WHERE conversation_id = ? AND user_id = 3", conversationUUID); err != nil {
 		t.Fatalf("rejoin as admin: %v", err)
 	}
-	response := deleteMember(t, router, groupOwnerCredential(t), conversationUUID, "3")
+	response := deleteMember(t, router, groupOwnerCredential(t), conversationUUID, "uuid-bob")
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
@@ -384,21 +384,21 @@ func TestRemoveMemberRejectsInvalidRequests(t *testing.T) {
 	tests := []struct {
 		name           string
 		conversationID string
-		userID         string
+		userUUID       string
 		credential     func(t *testing.T) string
 		expectedCode   int
 	}{
-		{name: "invalid UUID", conversationID: "invalid", userID: "2", credential: groupOwnerCredential, expectedCode: http.StatusBadRequest},
-		{name: "invalid user id", conversationID: "01J2Q7D4N5R8TK6VD3SZ1H0Y9M", userID: "abc", credential: groupOwnerCredential, expectedCode: http.StatusBadRequest},
-		{name: "unknown conversation", conversationID: "01J2Q7D4N5R8TK6VD3SZ1H0Y7M", userID: "2", credential: groupOwnerCredential, expectedCode: http.StatusNotFound},
-		{name: "caller not a member", conversationID: "01J2Q7D4N5R8TK6VD3SZ1H0Y9M", userID: "2", credential: func(t *testing.T) string { return memberCredential(t, 4, "carol") }, expectedCode: http.StatusNotFound},
-		{name: "remove self", conversationID: "01J2Q7D4N5R8TK6VD3SZ1H0Y9M", userID: "1", credential: groupOwnerCredential, expectedCode: http.StatusBadRequest},
+		{name: "invalid UUID", conversationID: "invalid", userUUID: "uuid-alice", credential: groupOwnerCredential, expectedCode: http.StatusBadRequest},
+		{name: "invalid user uuid", conversationID: "01J2Q7D4N5R8TK6VD3SZ1H0Y9M", userUUID: strings.Repeat("x", 65), credential: groupOwnerCredential, expectedCode: http.StatusBadRequest},
+		{name: "unknown conversation", conversationID: "01J2Q7D4N5R8TK6VD3SZ1H0Y7M", userUUID: "uuid-alice", credential: groupOwnerCredential, expectedCode: http.StatusNotFound},
+		{name: "caller not a member", conversationID: "01J2Q7D4N5R8TK6VD3SZ1H0Y9M", userUUID: "uuid-alice", credential: func(t *testing.T) string { return memberCredential(t, 4, "carol") }, expectedCode: http.StatusNotFound},
+		{name: "remove self", conversationID: "01J2Q7D4N5R8TK6VD3SZ1H0Y9M", userUUID: "uuid-owner", credential: groupOwnerCredential, expectedCode: http.StatusBadRequest},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			router := setupGroupTestRouter(t)
 			seedGroup(t)
-			response := deleteMember(t, router, test.credential(t), test.conversationID, test.userID)
+			response := deleteMember(t, router, test.credential(t), test.conversationID, test.userUUID)
 			if response.Code != test.expectedCode {
 				t.Fatalf("status = %d (want %d), body = %s", response.Code, test.expectedCode, response.Body.String())
 			}
@@ -409,7 +409,7 @@ func TestRemoveMemberRejectsInvalidRequests(t *testing.T) {
 func TestRemoveMemberRequiresAuthentication(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	conversationUUID := seedGroup(t)
-	response := deleteMember(t, router, "", conversationUUID, "2")
+	response := deleteMember(t, router, "", conversationUUID, "uuid-alice")
 	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":10001`) {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}

@@ -92,31 +92,31 @@ export class IMHttpClient {
         return this.request("POST", "/api/v1/conversations", {
             body: {
                 kind: input.kind,
-                member_ids: input.memberIds,
+                member_uuids: input.memberUuids,
                 ...(input.title !== undefined ? { title: input.title } : {}),
             },
         });
     }
-    /** Get-or-create a direct conversation with one other user. */
-    createDirect(otherUserId) {
-        return this.createConversation({ kind: "direct", memberIds: [otherUserId] });
+    /** Get-or-create a direct conversation with one other user, by uuid. */
+    createDirect(otherUserUuid) {
+        return this.createConversation({ kind: "direct", memberUuids: [otherUserUuid] });
     }
     /** Create a new group; the authenticated user becomes its owner. */
-    createGroup(title, memberIds) {
+    createGroup(title, memberUuids) {
         return this.request("POST", "/api/v1/group", {
-            body: { title, member_ids: memberIds },
+            body: { title, member_uuids: memberUuids },
         });
     }
     getConversation(uuid) {
         return this.request("GET", `/api/v1/conversations/${encodeURIComponent(uuid)}`);
     }
-    /** Add members to a group (owner/admin; idempotent for already-active members). */
-    addMembers(conversationId, memberIds) {
-        return this.request("POST", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members`, { body: { member_ids: memberIds } });
+    /** Add members (by uuid) to a group (owner/admin; idempotent for already-active members). */
+    addMembers(conversationId, memberUuids) {
+        return this.request("POST", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members`, { body: { member_uuids: memberUuids } });
     }
-    /** Remove one member from a group (owner/admin; cannot remove self or the owner). */
-    removeMember(conversationId, userId) {
-        return this.request("DELETE", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${userId}`);
+    /** Remove one member (by uuid) from a group (owner/admin; cannot remove self or the owner). */
+    removeMember(conversationId, userUuid) {
+        return this.request("DELETE", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userUuid)}`);
     }
     // ---- Messages ----
     /** Ordered message page after a sequence; use for history and reconnect sync. */

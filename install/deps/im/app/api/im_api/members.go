@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 )
 
 type addMembersRequest struct {
-	MemberIDs []int64 `json:"member_ids"`
+	MemberUUIDs []string `json:"member_uuids"`
 }
 
 // AddMembers adds users to a group conversation. Only an active owner or
@@ -42,9 +41,9 @@ func AddMembers(c *gin.Context) {
 		return
 	}
 
-	members := uniquePositiveIDs(request.MemberIDs)
-	delete(members, user.ID)
-	if len(members) == 0 {
+	memberUUIDs := uniqueUUIDs(request.MemberUUIDs)
+	delete(memberUUIDs, user.UUID)
+	if len(memberUUIDs) == 0 {
 		respondError(c, http.StatusBadRequest, 10003, "No members to add")
 		return
 	}
@@ -68,19 +67,18 @@ func AddMembers(c *gin.Context) {
 		return
 	}
 
-	memberIDs := make([]int64, 0, len(members))
-	for memberID := range members {
-		memberIDs = append(memberIDs, memberID)
-	}
-	existQuery, existArgs, err := sqlx.In("SELECT COUNT(*) FROM users WHERE id IN (?)", memberIDs)
+	resolved, err := resolveUsers(db, memberUUIDs)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, 10003, "Invalid members")
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load members")
 		return
 	}
-	var existingUsers int
-	if err := db.Get(&existingUsers, db.Rebind(existQuery), existArgs...); err != nil || existingUsers != len(memberIDs) {
+	if len(resolved) != len(memberUUIDs) {
 		respondError(c, http.StatusBadRequest, 10003, "One or more members do not exist")
 		return
+	}
+	memberIDs := make([]int64, 0, len(resolved))
+	for _, member := range resolved {
+		memberIDs = append(memberIDs, member.ID)
 	}
 
 	eventID, err := utils.NewULID()
@@ -146,7 +144,7 @@ func AddMembers(c *gin.Context) {
 func loadActiveMembers(db *sqlx.DB, conversationUUID string) ([]conversationMemberResponse, error) {
 	members := make([]conversationMemberResponse, 0)
 	query := `
-		SELECT u.id, u.username, u.nickname, u.avatar_url, cm.role
+		SELECT u.id, u.uuid, u.username, u.nickname, u.avatar_url, cm.role
 		FROM conversation_members cm
 		JOIN users u ON u.id = cm.user_id
 		WHERE cm.conversation_id = ? AND cm.left_at IS NULL
@@ -198,12 +196,12 @@ func RemoveMember(c *gin.Context) {
 	}
 
 	conversationUUID := strings.TrimSpace(c.Param("conversation_uuid"))
-	targetID, parseErr := strconv.ParseInt(strings.TrimSpace(c.Param("user_id")), 10, 64)
-	if len(conversationUUID) != 26 || parseErr != nil || targetID < 1 {
-		respondError(c, http.StatusBadRequest, 10003, "Invalid conversation UUID or user ID")
+	targetUUID := strings.TrimSpace(c.Param("user_uuid"))
+	if len(conversationUUID) != 26 || targetUUID == "" || len(targetUUID) > 64 {
+		respondError(c, http.StatusBadRequest, 10003, "Invalid conversation UUID or user UUID")
 		return
 	}
-	if targetID == user.ID {
+	if targetUUID == user.UUID {
 		respondError(c, http.StatusBadRequest, 10003, "Cannot remove yourself")
 		return
 	}
@@ -224,6 +222,28 @@ func RemoveMember(c *gin.Context) {
 	}
 	if membership.Role != "owner" && membership.Role != "admin" {
 		respondError(c, http.StatusForbidden, 10005, "Permission denied")
+		return
+	}
+
+	var targetID int64
+	resolveErr := db.Get(&targetID, db.Rebind("SELECT id FROM users WHERE uuid = ?"), targetUUID)
+	if errors.Is(resolveErr, sql.ErrNoRows) {
+		// Unknown user: they can never have been an active member, so the
+		// removal is an idempotent no-op.
+		memberList, listErr := loadActiveMembers(db, conversationUUID)
+		if listErr != nil {
+			respondError(c, http.StatusInternalServerError, 10000, "Could not load conversation members")
+			return
+		}
+		respond(c, http.StatusOK, conversationDetailsResponse{
+			ConversationUUID: conversationUUID,
+			Type:             membership.Kind,
+			Members:          memberList,
+		})
+		return
+	}
+	if resolveErr != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load user")
 		return
 	}
 

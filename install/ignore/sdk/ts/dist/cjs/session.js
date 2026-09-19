@@ -179,20 +179,20 @@ class AirwayIM {
     createConversation(input) {
         return this.rest.createConversation(input);
     }
-    createDirect(otherUserId) {
-        return this.rest.createDirect(otherUserId);
+    createDirect(otherUserUuid) {
+        return this.rest.createDirect(otherUserUuid);
     }
-    createGroup(title, memberIds) {
-        return this.rest.createGroup(title, memberIds);
+    createGroup(title, memberUuids) {
+        return this.rest.createGroup(title, memberUuids);
     }
     getConversation(uuid) {
         return this.rest.getConversation(uuid);
     }
-    addMembers(conversationId, memberIds) {
-        return this.rest.addMembers(conversationId, memberIds);
+    addMembers(conversationId, memberUuids) {
+        return this.rest.addMembers(conversationId, memberUuids);
     }
-    removeMember(conversationId, userId) {
-        return this.rest.removeMember(conversationId, userId);
+    removeMember(conversationId, userUuid) {
+        return this.rest.removeMember(conversationId, userUuid);
     }
     /**
      * Initial load for a conversation: fetch messages after fromSequence

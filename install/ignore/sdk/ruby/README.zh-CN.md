@@ -1,8 +1,8 @@
 # airway-im-sdk-ruby
 
 [Airway IM](https://github.com/daqing/airway-im-plugin) 的 Ruby SDK：把后端的
-REST API、凭证签发与内部铸造接口封装成一套开箱即用的 Ruby 接口，Ruby 项目
-（Rails / Sinatra / 任意 Ruby 服务）无需自己实现凭证签名、信封解析、幂等重试
+REST API 与凭证铸造接口封装成一套开箱即用的 Ruby 接口，Ruby 项目
+（Rails / Sinatra / 任意 Ruby 服务）无需自己实现铸造调用、信封解析、幂等重试
 和凭证自动续期等协议代码。
 
 零运行时依赖 —— 只使用 Ruby 标准库（`Net::HTTP` / `JSON` / `OpenSSL` /
@@ -35,25 +35,11 @@ require "airway-im-sdk-ruby"
 ### 1. 为你的用户获取凭证
 
 SDK 不含登录逻辑。用户先在你的平台完成自己的登录（账号密码、验证码等）；
-登录成功后，**你的服务器后端**从自己的用户表取出 `(uuid, name)`，用下面两种
-方式之一获得 IM 凭证，并随你自己的登录响应下发给客户端：
-
-**方式 A：本地签名**（你的后端被授权持有 `IM_AUTH_SECRET` 时）——无网络开销：
-
-```ruby
-credential = AirwayIM::Credentials.sign(
-  secret: ENV["IM_AUTH_SECRET"],
-  uuid: "user-42",          # 你平台上的稳定唯一 ID
-  name: "alice",            # 用户名（凭证签发时自动注册/刷新 IM 用户）
-  nickname: "Alice",        # 可选，仅传入时才更新
-  avatar_url: "https://…",  # 可选
-  ttl: 86_400,              # 可选，默认 24 小时；nil 表示永不过期（仅限服务凭证）
-)
-```
-
-**方式 B：内部铸造接口**（推荐给第三方平台）——你的后端只需持有
-`IM_INTERNAL_SECRET`，签名密钥 `IM_AUTH_SECRET` 永远留在 IM 服务端；铸造出的
-凭证带 `token_version`，可通过管理后台逐用户吊销：
+登录成功后，**你的服务器后端**从自己的用户表取出 `(uuid, name)`，以服务端对
+服务端方式调用 IM 服务的**内部铸造接口**获得凭证，并随你自己的登录响应下发
+给客户端。你的后端只需持有 `IM_INTERNAL_SECRET`，签名密钥 `IM_AUTH_SECRET`
+永远留在 IM 服务端；铸造出的凭证带 `token_version`，可通过管理后台逐用户
+吊销：
 
 ```ruby
 internal = AirwayIM::InternalClient.new(
@@ -66,6 +52,10 @@ minted = internal.mint_credential(uuid: "user-42", name: "alice",
 credential = minted.credential          # "im1.…"
 minted.expires_at                       # ISO8601 字符串；ttl_seconds: 0 时为 nil
 ```
+
+第三方平台后端**只能**通过内部铸造接口获取凭证：本地签名（自行持有
+`IM_AUTH_SECRET` 计算 HMAC）仅面向 Airway 项目方自己的后端，平台侧一律不
+持有签名密钥。
 
 两个必须分清的点（完整信任模型见
 [identity.md](../../deps/im/docs/design/identity.md)）：
@@ -86,8 +76,8 @@ im = AirwayIM::Client.new(
 )
 
 im.me                                     # 当前用户资料
-conversation = im.create_direct(2)        # 与用户 2 的单聊（get-or-create）
-im.create_group(member_ids: [2, 3], title: "Backend Team")
+conversation = im.create_direct("user-2") # 与 uuid 为 user-2 的用户单聊（get-or-create）
+im.create_group(member_uuids: ["user-2", "user-3"], title: "Backend Team")
 im.list_groups                            # 我加入的群列表
 im.conversation(conversation["id"])       # 会话类型 + 成员及角色
 
@@ -113,12 +103,12 @@ im.storage_url("avatars/202609/xxx.png")                # 下载地址
 | --- | --- |
 | `me` | `GET /api/v1/me` |
 | `list_groups` | `GET /api/v1/conversations?type=group` |
-| `create_conversation(kind:, member_ids:, title: nil)` | `POST /api/v1/conversations` |
-| `create_direct(other_user_id)` | 同上（direct get-or-create） |
-| `create_group(member_ids:, title: nil)` | `POST /api/v1/group` |
+| `create_conversation(kind:, member_uuids:, title: nil)` | `POST /api/v1/conversations` |
+| `create_direct(other_uuid)` | 同上（direct get-or-create） |
+| `create_group(member_uuids:, title: nil)` | `POST /api/v1/group` |
 | `conversation(uuid)` | `GET /api/v1/conversations/:uuid` |
-| `add_members(uuid, member_ids)` | `POST .../members`（owner/admin，幂等） |
-| `remove_member(uuid, user_id)` | `DELETE .../members/:user_id`（owner/admin） |
+| `add_members(uuid, member_uuids)` | `POST .../members`（owner/admin，幂等） |
+| `remove_member(uuid, user_uuid)` | `DELETE .../members/:user_uuid`（owner/admin） |
 | `messages(uuid, after_sequence: nil, limit: nil)` | `GET .../messages`（原始分页，limit 1–200） |
 | `each_message(uuid, after_sequence: 0, page_size: 100)` | 自动翻页的 Enumerator，升序遍历历史 |
 | `send_message(conversation_id, content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
@@ -131,7 +121,10 @@ callback，收到 `10001`/401 时自动换新凭证并重试一次；`credential
 更新）、`timeout`（秒，默认 15）。`content_type` 支持 `text/markdown`（默认）
 与 `text/plain`；内容上限 32768 字节，服务端会把 CRLF 归一为 LF。
 
-### `AirwayIM::Credentials`（本地签名，方式 A）
+### `AirwayIM::Credentials`（签名与验签工具）
+
+本地签名 `sign` 仅面向持有 `IM_AUTH_SECRET` 的 Airway 项目方自己的服务端；
+第三方平台后端不持有该密钥，必须使用 `InternalClient#mint_credential`。
 
 | 方法 | 说明 |
 | --- | --- |
