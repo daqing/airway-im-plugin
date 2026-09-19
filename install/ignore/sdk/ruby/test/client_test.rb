@@ -191,6 +191,43 @@ module AirwayIM
       client.send_message("01AB", "hi", content_type: "text/plain", idempotency_key: "my-key")
     end
 
+    def test_send_message_returns_message_with_reader_methods
+      payload = { "id" => "01M1", "conversation_id" => "01AB", "sequence" => 1,
+                  "content" => "hi", "content_type" => "text/markdown",
+                  "created_at" => "2026-01-01T00:00:00Z",
+                  "sender" => { "uuid" => "uuid-alice", "username" => "alice",
+                                "nickname" => "Alice", "avatar_url" => nil } }
+      client = with_server do |_req|
+        [201, envelope(payload)]
+      end
+
+      message = client.send_message("01AB", "hi")
+      assert_kind_of Message, message
+      assert_kind_of Hash, message
+      assert_equal "01M1", message.id
+      assert_equal "01AB", message.conversation_id
+      assert_equal "hi", message.content
+      assert_equal "text/markdown", message.content_type
+      assert_equal 1, message.sequence
+      assert_equal "2026-01-01T00:00:00Z", message.created_at
+      assert_equal "uuid-alice", message.sender.uuid
+      assert_equal "alice", message.sender.username
+      assert_equal "Alice", message.sender.nickname
+      assert_nil message.sender.avatar_url
+      assert_equal "hi", message["content"]
+      assert_equal payload, JSON.parse(JSON.generate(message))
+    end
+
+    def test_messages_returns_message_objects
+      client = with_server do |_req|
+        [200, envelope([msg(1), msg(2)])]
+      end
+      list = client.messages("01AB")
+      assert_equal %w[01M1 01M2], list.map(&:id)
+      assert_equal [1, 2], list.map(&:sequence)
+      assert_equal "alice", list.first.sender.username
+    end
+
     def test_send_direct_message_creates_conversation_then_sends
       paths = []
       client = with_server do |req|
@@ -343,7 +380,9 @@ module AirwayIM
     private
 
     def msg(sequence)
-      { "id" => "01M#{sequence}", "conversation_id" => "01AB", "sender" => { "id" => 1 },
+      { "id" => "01M#{sequence}", "conversation_id" => "01AB",
+        "sender" => { "uuid" => "uuid-alice", "username" => "alice",
+                      "nickname" => "Alice", "avatar_url" => nil },
         "content" => "m#{sequence}", "content_type" => "text/plain",
         "created_at" => "2026-01-01T00:00:00Z", "sequence" => sequence }
     end

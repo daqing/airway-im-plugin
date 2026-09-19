@@ -14,7 +14,9 @@ module AirwayIM
   #   )
   #
   # All methods return the envelope's `data` (a Hash or Array) and raise
-  # AirwayIM::Error on failure.
+  # AirwayIM::Error on failure. Message responses come back as an
+  # AirwayIM::Message — a Hash subclass with reader methods, so
+  # message["id"], message.id, and message.sender.uuid all work.
   class Client
     DEFAULT_CONTENT_TYPE = "text/markdown"
 
@@ -110,10 +112,12 @@ module AirwayIM
 
     # Ordered message page after a sequence; use for history display and
     # reconnect synchronization. limit: 1-200, the backend falls back to 100
-    # outside that range.
+    # outside that range. Returns Message objects (Hash subclass with reader
+    # methods, e.g. message.sequence).
     def messages(uuid, after_sequence: nil, limit: nil)
       query = { after_sequence: after_sequence, limit: limit }
       get("/api/v1/conversations/#{Util.escape_segment(uuid)}/messages", query: query)
+        .map { |row| Message.new(row) }
     end
 
     # Auto-paging enumerator over the conversation history in ascending
@@ -138,10 +142,11 @@ module AirwayIM
     # Send a message by conversation id. A random Idempotency-Key is
     # generated per call and reused across network-failure retries, so retry
     # storms can never duplicate a message; pass idempotency_key to control
-    # it (1-128 chars, reuse only for the same logical request).
+    # it (1-128 chars, reuse only for the same logical request). Returns a
+    # Message object (Hash subclass with reader methods, e.g. message.id).
     def send_message(conversation_id, content, content_type: DEFAULT_CONTENT_TYPE, idempotency_key: nil, retries: 1)
       body = { conversation_id: conversation_id, content: content, content_type: content_type }
-      post_message("/api/v1/messages", body, idempotency_key: idempotency_key, retries: retries)
+      Message.new(post_message("/api/v1/messages", body, idempotency_key: idempotency_key, retries: retries))
     end
 
     # Send a direct message to one other user, identified by their uuid:
