@@ -42,7 +42,7 @@ export function nodeAdapter(): IMAdapter {
     },
     upload: async (options) => {
       const form = new FormData();
-      form.append(options.name, new Blob(["airway-im-sdk e2e upload"]), "e2e.txt");
+      form.append(options.name, new Blob(["airway-im-sdk-ts e2e upload"]), "e2e.txt");
       for (const [k, v] of Object.entries(options.formData ?? {})) form.append(k, v);
       const res = await fetch(options.url, { method: "POST", body: form });
       const text = await res.text();

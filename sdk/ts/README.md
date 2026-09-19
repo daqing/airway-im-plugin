@@ -1,4 +1,4 @@
-# airway-im-sdk
+# airway-im-sdk-ts
 
 [Airway IM](https://github.com/daqing/airway-im-plugin) 的 JS/TS SDK，覆盖
 微信小程序与浏览器（Vue / React / 普通网页）：把后端的 REST API 与 WebSocket
@@ -28,7 +28,7 @@
 ## 安装
 
 ```bash
-npm install airway-im-sdk
+npm install airway-im-sdk-ts
 ```
 
 微信开发者工具：菜单「工具 → 构建 npm」后即可 `import`。
@@ -63,7 +63,7 @@ function mintCredential(name, uuid, secret) {
 ### 2. 小程序内初始化并收发消息
 
 ```ts
-import { createIM } from "airway-im-sdk";
+import { createIM } from "airway-im-sdk-ts";
 
 const im = createIM({
   apiUrl: "https://im.example.com",   // IM 后端（:1905），必须是 https
@@ -160,7 +160,7 @@ App({
 传输失败时 `status === 0`）。常用判断：
 
 ```ts
-import { IMError, ErrorCode } from "airway-im-sdk";
+import { IMError, ErrorCode } from "airway-im-sdk-ts";
 
 try {
   await im.sendMessage(id, "hi");
@@ -205,7 +205,7 @@ SDK 核心与平台无关；小程序端默认使用 `wechatAdapter`，浏览器
 `browserAdapter`（fetch / WebSocket / FormData / localStorage）即可：
 
 ```ts
-import { createIM, browserAdapter } from "airway-im-sdk";
+import { createIM, browserAdapter } from "airway-im-sdk-ts";
 
 export const im = createIM({
   apiUrl: "https://im.example.com",

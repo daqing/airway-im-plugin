@@ -1,8 +1,8 @@
-// airway-im-sdk — Airway IM SDK for WeChat Mini Programs and
+// airway-im-sdk-ts — Airway IM SDK for WeChat Mini Programs and
 // browsers (Vue / React / plain JS).
 //
 // Quick start:
-//   import { createIM } from "airway-im-sdk";
+//   import { createIM } from "airway-im-sdk-ts";
 //   const im = createIM({ apiUrl: "https://im.example.com",
 //                         wsUrl: "wss://im.example.com",
 //                         credential: hostIssuedCredential });       // WeChat

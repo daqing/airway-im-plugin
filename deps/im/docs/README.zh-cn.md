@@ -133,7 +133,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | [`deps/im/gateway/`](../gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：WebSocket 网关 | 1910 |
 | [`deps/im/delivery/`](../delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：事务性 outbox 投递器 | 1920 |
 | [`deps/im/docs/`](.) | 设计文档、API 指南、OpenAPI 契约、落地页（`index.html`）、中文文档 | — |
-| [`sdk/js/`](../../../sdk/js/) | JS/TS SDK（npm 包 `airway-im-sdk`）：类型化 REST 客户端、实时网关、基于 sequence 的同步引擎，内置微信小程序与浏览器适配器 | — |
+| [`sdk/ts/`](../../../sdk/ts/) | JS/TS SDK（npm 包 `airway-im-sdk-ts`）：类型化 REST 客户端、实时网关、基于 sequence 的同步引擎，内置微信小程序与浏览器适配器 | — |
 
 插件关键包：
 
@@ -331,7 +331,7 @@ HTTP API 一览：
 端点详解：[`deps/im/docs/api/messages.md`](api/messages.md)、
 [`deps/im/docs/api/me.md`](api/me.md)、[`deps/im/docs/api/admin.md`](api/admin.md)。
 
-客户端无需手写上述协议：[`sdk/js/`](../../../sdk/js/) 下的 JS/TS SDK（`airway-im-sdk`）把 REST API、网关协议（首帧认证、心跳、退避重连、事件去重）
+客户端无需手写上述协议：[`sdk/ts/`](../../../sdk/ts/) 下的 JS/TS SDK（`airway-im-sdk-ts`）把 REST API、网关协议（首帧认证、心跳、退避重连、事件去重）
 与基于 sequence 的补同步封装成一个类型化的 `createIM()` 门面，并内置微信小程序
 与浏览器两套平台适配器。
 

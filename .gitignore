@@ -22,4 +22,4 @@ schema.json
 node_modules/
 
 # SDK build output
-/sdk/js/dist
+/sdk/ts/dist
