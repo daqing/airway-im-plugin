@@ -479,7 +479,7 @@ cd deps/im/delivery &amp;&amp; go run .     <span class="c"># delivery :1920</sp
     </div>
 
     <div class="diagram" style="margin-bottom:28px">
-      <svg viewBox="0 0 1040 320" role="img" aria-label="第三方系统接入 Airway IM 的认证时序">
+      <svg viewBox="0 0 1040 640" role="img" aria-label="第三方系统接入 Airway IM 的认证时序">
         <defs>
           <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#9aa5b8"></path>
@@ -498,30 +498,30 @@ cd deps/im/delivery &amp;&amp; go run .     <span class="c"># delivery :1920</sp
         <text x="945" y="42" text-anchor="middle" font-size="13.5" font-weight="600">gateway</text>
         <text class="sub" x="945" y="60" text-anchor="middle" font-size="11">:1910 · WebSocket</text>
 
-        <line class="lifeline" x1="110" y1="74" x2="110" y2="274"></line>
-        <line class="lifeline" x1="380" y1="74" x2="380" y2="274"></line>
-        <line class="lifeline" x1="700" y1="74" x2="700" y2="274"></line>
-        <line class="lifeline" x1="945" y1="74" x2="945" y2="274"></line>
+        <line class="lifeline" x1="110" y1="74" x2="110" y2="560"></line>
+        <line class="lifeline" x1="380" y1="74" x2="380" y2="560"></line>
+        <line class="lifeline" x1="700" y1="74" x2="700" y2="560"></line>
+        <line class="lifeline" x1="945" y1="74" x2="945" y2="560"></line>
 
-        <path class="edge-soft" d="M 120 112 L 370 112" style="marker-end: url(#arrow2)"></path>
-        <text class="edge-label" x="245" y="104" text-anchor="middle" font-size="12">① 平台自有账号登录</text>
+        <path class="edge-soft" d="M 120 132 L 370 132" style="marker-end: url(#arrow2)"></path>
+        <text class="edge-label" x="245" y="124" text-anchor="middle" font-size="12">① 平台自有账号登录</text>
 
-        <path class="edge-soft" d="M 390 142 L 690 142" style="marker-end: url(#arrow2)"></path>
-        <text class="edge-label" x="540" y="134" text-anchor="middle" font-size="12">② 调 Airway API 签发凭证（IM_INTERNAL_SECRET）</text>
+        <path class="edge-soft" d="M 390 204 L 690 204" style="marker-end: url(#arrow2)"></path>
+        <text class="edge-label" x="540" y="196" text-anchor="middle" font-size="12">② 调 Airway API 签发凭证（IM_INTERNAL_SECRET）</text>
 
-        <path class="edge-soft" d="M 370 172 L 120 172" style="marker-end: url(#arrow2)"></path>
-        <text class="edge-label" x="245" y="164" text-anchor="middle" font-size="12">③ 下发 im1.… 凭证</text>
+        <path class="edge-soft" d="M 370 276 L 120 276" style="marker-end: url(#arrow2)"></path>
+        <text class="edge-label" x="245" y="268" text-anchor="middle" font-size="12">③ 下发 im1.… 凭证</text>
 
-        <path class="edge-soft" d="M 120 202 L 690 202" style="marker-end: url(#arrow2)"></path>
-        <text class="edge-label" x="540" y="194" text-anchor="middle" font-size="12">④ REST 携带 Bearer 凭证（HTTP API 全走这里）</text>
+        <path class="edge-soft" d="M 120 348 L 690 348" style="marker-end: url(#arrow2)"></path>
+        <text class="edge-label" x="540" y="340" text-anchor="middle" font-size="12">④ REST 携带 Bearer 凭证（HTTP API 全走这里）</text>
 
-        <path class="edge-soft" d="M 120 232 L 935 232" style="marker-end: url(#arrow2)"></path>
-        <text class="edge-label" x="822" y="224" text-anchor="middle" font-size="12">⑤ WSS 首条 auth 命令</text>
+        <path class="edge-soft" d="M 120 420 L 935 420" style="marker-end: url(#arrow2)"></path>
+        <text class="edge-label" x="822" y="412" text-anchor="middle" font-size="12">⑤ WSS 首条 auth 命令</text>
 
-        <path class="edge-soft" d="M 935 262 L 710 262" stroke-dasharray="5 4" style="marker-end: url(#arrow2)"></path>
-        <text class="edge-label" x="822" y="254" text-anchor="middle" font-size="11">验签 /internal/v1/auth</text>
+        <path class="edge-soft" d="M 935 492 L 710 492" stroke-dasharray="5 4" style="marker-end: url(#arrow2)"></path>
+        <text class="edge-label" x="822" y="484" text-anchor="middle" font-size="11">验签 /internal/v1/auth</text>
 
-        <text class="edge-label" x="520" y="302" text-anchor="middle" font-size="12.5">之后前端的一切请求只需要这一个凭证：HTTP 放 Authorization 头，WebSocket 放首条 auth 消息</text>
+        <text class="edge-label" x="520" y="600" text-anchor="middle" font-size="12.5">之后前端的一切请求只需要这一个凭证：HTTP 放 Authorization 头，WebSocket 放首条 auth 消息</text>
       </svg>
     </div>
 
