@@ -217,7 +217,7 @@ Content-Type: application/json
 {
   "kind": "group",
   "title": "Airway IM Backend",
-  "member_ids": [2, 3, 4]
+  "member_uuids": ["user-2", "user-3", "user-4"]
 }
 ```
 
@@ -273,12 +273,12 @@ Both conversation types use a common response shape:
   "avatar_url": null,
   "members": [
     {
-      "user_id": 10,
+      "user_uuid": "user-42",
       "role": "member",
       "joined_at": "2026-07-20T10:00:00Z"
     },
     {
-      "user_id": 20,
+      "user_uuid": "user-43",
       "role": "member",
       "joined_at": "2026-07-20T10:00:00Z"
     }

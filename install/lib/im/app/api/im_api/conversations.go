@@ -1,0 +1,329 @@
+package im_api
+
+import (
+	"database/sql"
+	"errors"
+	"net/http"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/models"
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/repo"
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/utils"
+	"github.com/gin-gonic/gin"
+	"github.com/jmoiron/sqlx"
+)
+
+type createConversationRequest struct {
+	Kind        string   `json:"kind"`
+	Title       *string  `json:"title"`
+	MemberUUIDs []string `json:"member_uuids"`
+}
+
+type createGroupRequest struct {
+	Title       *string  `json:"title"`
+	MemberUUIDs []string `json:"member_uuids"`
+}
+
+type conversationResponse struct {
+	ID        string    `db:"id" json:"id"`
+	Kind      string    `db:"kind" json:"kind"`
+	Title     *string   `db:"title" json:"title"`
+	AvatarURL *string   `db:"avatar_url" json:"avatar_url"`
+	CreatedBy string    `db:"created_by" json:"created_by"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+}
+
+type conversationMemberResponse struct {
+	UUID      string  `db:"uuid" json:"uuid"`
+	Username  string  `db:"username" json:"username"`
+	Nickname  *string `db:"nickname" json:"nickname"`
+	AvatarURL *string `db:"avatar_url" json:"avatar_url"`
+	Role      string  `db:"role" json:"role"`
+}
+
+type conversationDetailsResponse struct {
+	ConversationUUID string                       `json:"conversation_uuid"`
+	Type             string                       `json:"type"`
+	Members          []conversationMemberResponse `json:"members"`
+}
+
+func GetConversation(c *gin.Context) {
+	user, ok := currentUser(c)
+	if !ok {
+		return
+	}
+
+	conversationUUID := strings.TrimSpace(c.Param("conversation_uuid"))
+	if len(conversationUUID) != 26 {
+		respondError(c, http.StatusBadRequest, 10003, "Invalid conversation UUID")
+		return
+	}
+
+	db := repo.CurrentDB()
+	var conversationType string
+	query := `
+		SELECT c.kind
+		FROM conversations c
+		JOIN conversation_members cm ON cm.conversation_id = c.id
+		WHERE c.id = ? AND cm.user_id = ? AND cm.left_at IS NULL
+	`
+	if err := db.Get(&conversationType, db.Rebind(query), conversationUUID, user.ID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, 11001, "Conversation not found")
+			return
+		}
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load conversation")
+		return
+	}
+
+	members, err := loadActiveMembers(db, conversationUUID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load conversation members")
+		return
+	}
+
+	respond(c, http.StatusOK, conversationDetailsResponse{
+		ConversationUUID: conversationUUID,
+		Type:             conversationType,
+		Members:          members,
+	})
+}
+
+// GetDirectConversation resolves the authenticated user's direct conversation
+// with one peer by uuid, read-only: 404 when the peer is unknown or no direct
+// conversation exists yet (unlike POST /conversations, which get-or-creates).
+func GetDirectConversation(c *gin.Context) {
+	user, ok := currentUser(c)
+	if !ok {
+		return
+	}
+	peerUUID := strings.TrimSpace(c.Param("user_uuid"))
+	if peerUUID == "" {
+		respondError(c, http.StatusBadRequest, 10003, "Invalid user UUID")
+		return
+	}
+
+	db := repo.CurrentDB()
+	peer, err := resolveUsers(db, map[string]struct{}{peerUUID: {}})
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load user")
+		return
+	}
+	if len(peer) != 1 {
+		respondError(c, http.StatusNotFound, 11001, "Conversation not found")
+		return
+	}
+	existing, err := findDirect(db, user.ID, peer[0].ID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load conversation")
+		return
+	}
+	if existing == nil {
+		respondError(c, http.StatusNotFound, 11001, "Conversation not found")
+		return
+	}
+	respond(c, http.StatusOK, existing)
+}
+
+func ListConversations(c *gin.Context) {
+	user, ok := currentUser(c)
+	if !ok {
+		return
+	}
+
+	conversationType := strings.ToLower(strings.TrimSpace(c.Query("type")))
+	if conversationType != "group" {
+		respondError(c, http.StatusBadRequest, 10003, "Conversation type must be group")
+		return
+	}
+
+	db := repo.CurrentDB()
+	query := `
+		SELECT c.id, c.kind, c.title, c.avatar_url, creator.uuid AS created_by, c.created_at, c.updated_at
+		FROM conversations c
+		JOIN conversation_members cm ON cm.conversation_id = c.id
+		JOIN users creator ON creator.id = c.created_by
+		WHERE cm.user_id = ? AND cm.left_at IS NULL AND c.kind = ?
+		ORDER BY c.updated_at DESC, c.id DESC
+	`
+	conversations := make([]conversationResponse, 0)
+	if err := db.Select(&conversations, db.Rebind(query), user.ID, conversationType); err != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load conversations")
+		return
+	}
+	respond(c, http.StatusOK, conversations)
+}
+
+func CreateConversation(c *gin.Context) {
+	user, ok := currentUser(c)
+	if !ok {
+		return
+	}
+	var request createConversationRequest
+	if err := decodeJSONBody(c.Request.Body, &request); err != nil {
+		respondError(c, http.StatusBadRequest, 10003, "Invalid JSON body")
+		return
+	}
+	createConversation(c, user, request)
+}
+
+// CreateGroup creates a group conversation owned by the authenticated user.
+func CreateGroup(c *gin.Context) {
+	user, ok := currentUser(c)
+	if !ok {
+		return
+	}
+	var request createGroupRequest
+	if err := decodeJSONBody(c.Request.Body, &request); err != nil {
+		respondError(c, http.StatusBadRequest, 10003, "Invalid JSON body")
+		return
+	}
+	createConversation(c, user, createConversationRequest{
+		Kind:        "group",
+		Title:       request.Title,
+		MemberUUIDs: request.MemberUUIDs,
+	})
+}
+
+func createConversation(c *gin.Context, user *models.User, request createConversationRequest) {
+	request.Kind = strings.ToLower(strings.TrimSpace(request.Kind))
+	if request.Kind != "direct" && request.Kind != "group" {
+		respondError(c, http.StatusBadRequest, 10003, "Conversation kind must be direct or group")
+		return
+	}
+
+	memberUUIDs := uniqueUUIDs(request.MemberUUIDs)
+	delete(memberUUIDs, user.UUID)
+	if request.Kind == "direct" && len(memberUUIDs) != 1 {
+		respondError(c, http.StatusBadRequest, 10003, "A direct conversation requires one other member")
+		return
+	}
+	if request.Kind == "group" && len(memberUUIDs) == 0 {
+		respondError(c, http.StatusBadRequest, 10003, "A group requires at least one other member")
+		return
+	}
+
+	db := repo.CurrentDB()
+	resolved, err := resolveUsers(db, memberUUIDs)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load members")
+		return
+	}
+	if len(resolved) != len(memberUUIDs) {
+		respondError(c, http.StatusBadRequest, 10003, "One or more members do not exist")
+		return
+	}
+	memberIDs := make([]int64, 0, len(resolved))
+	for _, member := range resolved {
+		memberIDs = append(memberIDs, member.ID)
+	}
+	if request.Kind == "direct" {
+		for _, member := range resolved {
+			if existing, err := findDirect(db, user.ID, member.ID); err == nil && existing != nil {
+				respond(c, http.StatusOK, existing)
+				return
+			}
+		}
+	}
+
+	id, err := utils.NewULID()
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not create conversation")
+		return
+	}
+	now := time.Now().UTC()
+	err = repo.Tx(db, func(tx *sqlx.Tx) error {
+		if _, err := tx.Exec(tx.Rebind("INSERT INTO conversations (id, kind, title, avatar_url, created_by, next_sequence, created_at, updated_at) VALUES (?, ?, ?, NULL, ?, 1, ?, ?)"), id, request.Kind, request.Title, user.ID, now, now); err != nil {
+			return err
+		}
+		role := "owner"
+		if request.Kind == "direct" {
+			role = "member"
+		}
+		if _, err := tx.Exec(tx.Rebind("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)"), id, user.ID, role, now); err != nil {
+			return err
+		}
+		for _, member := range resolved {
+			if _, err := tx.Exec(tx.Rebind("INSERT INTO conversation_members (conversation_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)"), id, member.ID, now); err != nil {
+				return err
+			}
+		}
+		if request.Kind == "direct" {
+			for _, member := range resolved {
+				low, high := orderedPair(user.ID, member.ID)
+				_, err := tx.Exec(tx.Rebind("INSERT INTO direct_conversations (conversation_id, user_id_low, user_id_high) VALUES (?, ?, ?)"), id, low, high)
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		if request.Kind == "direct" {
+			for _, member := range resolved {
+				if existing, lookupErr := findDirect(db, user.ID, member.ID); lookupErr == nil && existing != nil {
+					respond(c, http.StatusOK, existing)
+					return
+				}
+			}
+		}
+		respondError(c, http.StatusInternalServerError, 10000, "Could not create conversation")
+		return
+	}
+	respond(c, http.StatusCreated, conversationResponse{ID: id, Kind: request.Kind, Title: request.Title, CreatedBy: user.UUID, CreatedAt: now, UpdatedAt: now})
+}
+
+func findDirect(db *sqlx.DB, first, second int64) (*conversationResponse, error) {
+	low, high := orderedPair(first, second)
+	query := "SELECT c.id, c.kind, c.title, c.avatar_url, creator.uuid AS created_by, c.created_at, c.updated_at FROM conversations c JOIN direct_conversations d ON d.conversation_id = c.id JOIN users creator ON creator.id = c.created_by WHERE d.user_id_low = ? AND d.user_id_high = ?"
+	rows, err := db.Queryx(db.Rebind(query), low, high)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, nil
+	}
+	var response conversationResponse
+	return &response, rows.StructScan(&response)
+}
+
+func uniqueUUIDs(uuids []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(uuids))
+	for _, uuid := range uuids {
+		if uuid = strings.TrimSpace(uuid); uuid != "" {
+			result[uuid] = struct{}{}
+		}
+	}
+	return result
+}
+
+// resolvedUser is a users row looked up from a member uuid.
+type resolvedUser struct {
+	ID   int64  `db:"id"`
+	UUID string `db:"uuid"`
+}
+
+// resolveUsers maps member uuids to their users rows; callers compare the
+// result length to detect unknown uuids.
+func resolveUsers(db *sqlx.DB, uuids map[string]struct{}) ([]resolvedUser, error) {
+	list := make([]string, 0, len(uuids))
+	for uuid := range uuids {
+		list = append(list, uuid)
+	}
+	query, args, err := sqlx.In("SELECT id, uuid FROM users WHERE uuid IN (?)", list)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]resolvedUser, 0, len(list))
+	err = db.Select(&users, db.Rebind(query), args...)
+	return users, err
+}
+
+func orderedPair(a, b int64) (int64, int64) {
+	values := []int64{a, b}
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	return values[0], values[1]
+}

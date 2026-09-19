@@ -2,7 +2,7 @@
 //
 // Usage:
 //   node src/main.ts --name alice [--nickname Alice]
-//     [--conversation <id> | --join "<group title>" | --create-group "Title" --members 2,3]
+//     [--conversation <id> | --join "<group title>" | --create-group "Title" --members <uuid>,<uuid>]
 //     [--backend http://127.0.0.1:1905] [--gateway ws://127.0.0.1:1910/ws]
 //     [--internal-url http://127.0.0.1:1906]
 //     [--credential im1.... | --internal-secret <secret>]
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
   const me = await client.me();
 
   if (args.command === "groups") {
-    await listMyGroups(client, me.id);
+    await listMyGroups(client, me.uuid);
     return;
   }
 
@@ -117,8 +117,8 @@ async function main(): Promise<void> {
   let conversationId: string;
   let title: string;
   if (args.createGroup !== undefined) {
-    const memberIds = parseMemberIds(args.members ?? "");
-    const conv = await createGroupOrExit(client, args.createGroup || null, memberIds);
+    const memberUuids = parseMemberUuids(args.members ?? "");
+    const conv = await createGroupOrExit(client, args.createGroup || null, memberUuids);
     conversationId = conv.id;
     title = conv.title ?? conv.id;
     console.log(`created group "${title}" (${conv.id})`);
@@ -147,11 +147,11 @@ async function main(): Promise<void> {
     const groups = await client.listGroups();
     if (groups.length === 0) {
       // First run: offer to create a group interactively instead of failing.
-      console.log(`logged in as ${me.username} (id ${me.id}) — you have no groups yet.`);
-      console.log("Group members are numeric user ids; each user's id is shown in their chat header.");
+      console.log(`logged in as ${me.username} (uuid ${me.uuid}) — you have no groups yet.`);
+      console.log("Group members are user uuids; each member's uuid is shown in the member list.");
       const created = await promptCreateGroup(client);
       if (!created) {
-        console.error('aborted. Use --create-group "Title" --members <id>[,<id>...] next time.');
+        console.error('aborted. Use --create-group "Title" --members <uuid>[,<uuid>...] next time.');
         process.exit(2);
       }
       conversationId = created.id;
@@ -167,19 +167,19 @@ async function main(): Promise<void> {
 
   const details = await client.getConversation(conversationId);
   if (details.type === "group") {
-    title = `${title} · members: ${memberNames(details.members, me.id).join(", ")}`;
+    title = `${title} · members: ${memberNames(details.members, me.uuid).join(", ")}`;
   }
 
   // Message state: dedupe by message_id, order by sequence.
   const seenMessages = new Set<string>();
   let lastSequence = 0;
-  const ui = new ChatUI({ title, selfName: me.nickname ?? me.username, selfId: me.id });
+  const ui = new ChatUI({ title, selfName: me.nickname ?? me.username, selfUuid: me.uuid });
 
   const append = (msg: ChatMessage): void => {
     if (seenMessages.has(msg.id)) return;
     seenMessages.add(msg.id);
     lastSequence = Math.max(lastSequence, msg.sequence);
-    ui.addMessage(msg, me.id);
+    ui.addMessage(msg, me.uuid);
   };
 
   // Serialize syncs; onEvent and reconnect can trigger them concurrently.
@@ -197,7 +197,7 @@ async function main(): Promise<void> {
     void client.getConversation(conversationId).then((d) => {
       if (d.type !== "group") return;
       const base = title.split(" · members:")[0];
-      ui.setTitle(`${base} · members: ${memberNames(d.members, me.id).join(", ")}`);
+      ui.setTitle(`${base} · members: ${memberNames(d.members, me.uuid).join(", ")}`);
     }).catch(() => {});
   };
 
@@ -217,14 +217,14 @@ async function main(): Promise<void> {
           .then((msgs) => { if (msgs[0]) ui.replaceMessage(msgs[0]); })
           .catch(() => {});
       } else if (event.event === "conversation.member_added") {
-        const added = (event.added_user_ids ?? []).join(", ");
+        const added = (event.added_user_uuids ?? []).join(", ");
         ui.addSystem(`member(s) ${added} joined the group`);
         refreshTitle();
       } else if (event.event === "conversation.member_removed") {
-        if (event.removed_user_id === me.id) {
+        if (event.removed_user_uuid === me.uuid) {
           ui.addSystem("you were removed from this group — sending will fail");
         } else {
-          ui.addSystem(`member ${event.removed_user_id} was removed`);
+          ui.addSystem(`member ${event.removed_user_uuid} was removed`);
         }
         refreshTitle();
       }
@@ -234,7 +234,7 @@ async function main(): Promise<void> {
 
   ui.start((line) => {
     if (line.startsWith("/")) {
-      handleCommand(line, ui, client, conversationId, gateway, sync, me.id);
+      handleCommand(line, ui, client, conversationId, gateway, sync, me.uuid);
       return;
     }
     void client
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
       .catch((err: unknown) => ui.addSystem(`send failed: ${String(err)}`));
   });
 
-  ui.addSystem(`logged in as ${me.username} (id ${me.id}, uuid ${me.uuid})`);
+  ui.addSystem(`logged in as ${me.username} (uuid ${me.uuid})`);
   for (const msg of history) append(msg);
   if (history.length > 0) ui.addSystem(`loaded ${history.length} earlier message(s)`);
   gateway.connect();
@@ -257,22 +257,22 @@ function mustSecret(args: Args): string {
   return args.internalSecret;
 }
 
-function parseMemberIds(raw: string): number[] {
+function parseMemberUuids(raw: string): string[] {
   return raw
     .split(",")
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isInteger(n) && n > 0);
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
-async function listMyGroups(client: IMClient, selfId: number): Promise<void> {
+async function listMyGroups(client: IMClient, selfUuid: string): Promise<void> {
   const groups = await client.listGroups();
   if (groups.length === 0) {
-    console.log("you have no groups yet — create one with --create-group \"Title\" --members <id>[,<id>...]");
+    console.log("you have no groups yet — create one with --create-group \"Title\" --members <uuid>[,<uuid>...]");
     return;
   }
   const rows = await Promise.all(groups.map(async (g) => {
     const details = await client.getConversation(g.id);
-    const me = details.members.find((m) => m.id === selfId);
+    const me = details.members.find((m) => m.uuid === selfUuid);
     return { group: g, members: details.members.length, role: me?.role ?? "?" };
   }));
   console.log(`${rows.length} group(s):`);
@@ -300,21 +300,21 @@ async function listAllGroups(args: Args): Promise<void> {
   }
 }
 
-function memberNames(members: ConversationMember[], selfId: number): string[] {
-  return members.map((m) => `${m.nickname ?? m.username}(${m.id === selfId ? "you" : m.id})`);
+function memberNames(members: ConversationMember[], selfUuid: string): string[] {
+  return members.map((m) => `${m.nickname ?? m.username}(${m.uuid === selfUuid ? "you" : m.uuid})`);
 }
 
 async function createGroupOrExit(
   client: IMClient,
   title: string | null,
-  memberIds: number[],
+  memberUuids: string[],
 ): Promise<Conversation> {
-  if (memberIds.length === 0) {
-    console.error("error: a group needs at least one other member id (--members <id>[,<id>...])");
+  if (memberUuids.length === 0) {
+    console.error("error: a group needs at least one other member uuid (--members <uuid>[,<uuid>...])");
     process.exit(2);
   }
   try {
-    return await client.createGroup(title, memberIds);
+    return await client.createGroup(title, memberUuids);
   } catch (err) {
     console.error("error: could not create group:", err instanceof Error ? err.message : err);
     process.exit(1);
@@ -326,14 +326,14 @@ async function promptCreateGroup(client: IMClient): Promise<Conversation | null>
   try {
     const title = (await rl.question('Create a group now? Title (empty to quit): ')).trim();
     if (!title) return null;
-    const raw = await rl.question("Member ids, comma-separated: ");
-    const memberIds = parseMemberIds(raw);
-    if (memberIds.length === 0) {
-      console.error("no valid member ids given");
+    const raw = await rl.question("Member uuids, comma-separated: ");
+    const memberUuids = parseMemberUuids(raw);
+    if (memberUuids.length === 0) {
+      console.error("no valid member uuids given");
       return null;
     }
     try {
-      const conv = await client.createGroup(title, memberIds);
+      const conv = await client.createGroup(title, memberUuids);
       console.log(`created group "${conv.title ?? conv.id}" (${conv.id})`);
       return conv;
     } catch (err) {
@@ -352,32 +352,32 @@ function handleCommand(
   conversationId: string,
   gateway: GatewayClient,
   sync: () => void,
-  selfId: number,
+  selfUuid: string,
 ): void {
   const [cmd, ...rest] = line.split(/\s+/);
   switch (cmd) {
     case "/help":
-      ui.addSystem("commands: /add <id>[,<id>...] /remove <id> /members /sync /exit — anything else is sent as a message");
+      ui.addSystem("commands: /add <uuid>[,<uuid>...] /remove <uuid> /members /sync /exit — anything else is sent as a message");
       break;
     case "/add": {
-      const memberIds = parseMemberIds(rest.join(","));
-      if (memberIds.length === 0) {
-        ui.addSystem("usage: /add <id>[,<id>...]");
+      const memberUuids = parseMemberUuids(rest.join(","));
+      if (memberUuids.length === 0) {
+        ui.addSystem("usage: /add <uuid>[,<uuid>...]");
         return;
       }
-      void client.addMembers(conversationId, memberIds).then((d) => {
-        ui.addSystem(`members: ${memberNames(d.members, selfId).join(", ")}`);
+      void client.addMembers(conversationId, memberUuids).then((d) => {
+        ui.addSystem(`members: ${memberNames(d.members, selfUuid).join(", ")}`);
       }).catch((err: unknown) => ui.addSystem(`add failed: ${String(err)}`));
       break;
     }
     case "/remove": {
-      const targetId = Number(rest[0]);
-      if (!Number.isInteger(targetId) || targetId < 1) {
-        ui.addSystem("usage: /remove <id>");
+      const targetUuid = (rest[0] ?? "").trim();
+      if (!targetUuid) {
+        ui.addSystem("usage: /remove <uuid>");
         return;
       }
-      void client.removeMember(conversationId, targetId).then((d) => {
-        ui.addSystem(`members: ${memberNames(d.members, selfId).join(", ")}`);
+      void client.removeMember(conversationId, targetUuid).then((d) => {
+        ui.addSystem(`members: ${memberNames(d.members, selfUuid).join(", ")}`);
       }).catch((err: unknown) => ui.addSystem(`remove failed: ${String(err)}`));
       break;
     }
@@ -385,7 +385,7 @@ function handleCommand(
       void client.getConversation(conversationId).then((d) => {
         ui.addSystem(
           d.members
-            .map((m) => `${m.nickname ?? m.username}(${m.id === selfId ? `you, ${m.role}` : `${m.id}, ${m.role}`})`)
+            .map((m) => `${m.nickname ?? m.username}(${m.uuid === selfUuid ? `you, ${m.role}` : `${m.uuid}, ${m.role}`})`)
             .join(", "),
         );
       });

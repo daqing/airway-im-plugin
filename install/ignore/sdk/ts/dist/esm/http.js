@@ -92,31 +92,46 @@ export class IMHttpClient {
         return this.request("POST", "/api/v1/conversations", {
             body: {
                 kind: input.kind,
-                member_ids: input.memberIds,
+                member_uuids: input.memberUuids,
                 ...(input.title !== undefined ? { title: input.title } : {}),
             },
         });
     }
-    /** Get-or-create a direct conversation with one other user. */
-    createDirect(otherUserId) {
-        return this.createConversation({ kind: "direct", memberIds: [otherUserId] });
+    /** Get-or-create a direct conversation with one other user, by uuid. */
+    createDirect(otherUserUuid) {
+        return this.createConversation({ kind: "direct", memberUuids: [otherUserUuid] });
+    }
+    /**
+     * The direct conversation with one other user by uuid, or null when none
+     * exists yet (read-only; createDirect get-or-creates instead). Combine with
+     * listMessages to poll and display the history with that user.
+     */
+    async getDirectConversation(otherUserUuid) {
+        try {
+            return await this.request("GET", `/api/v1/conversations/direct/${encodeURIComponent(otherUserUuid)}`);
+        }
+        catch (err) {
+            if (err instanceof IMError && err.code === ErrorCode.ConversationNotFound)
+                return null;
+            throw err;
+        }
     }
     /** Create a new group; the authenticated user becomes its owner. */
-    createGroup(title, memberIds) {
+    createGroup(title, memberUuids) {
         return this.request("POST", "/api/v1/group", {
-            body: { title, member_ids: memberIds },
+            body: { title, member_uuids: memberUuids },
         });
     }
     getConversation(uuid) {
         return this.request("GET", `/api/v1/conversations/${encodeURIComponent(uuid)}`);
     }
-    /** Add members to a group (owner/admin; idempotent for already-active members). */
-    addMembers(conversationId, memberIds) {
-        return this.request("POST", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members`, { body: { member_ids: memberIds } });
+    /** Add members (by uuid) to a group (owner/admin; idempotent for already-active members). */
+    addMembers(conversationId, memberUuids) {
+        return this.request("POST", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members`, { body: { member_uuids: memberUuids } });
     }
-    /** Remove one member from a group (owner/admin; cannot remove self or the owner). */
-    removeMember(conversationId, userId) {
-        return this.request("DELETE", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${userId}`);
+    /** Remove one member (by uuid) from a group (owner/admin; cannot remove self or the owner). */
+    removeMember(conversationId, userUuid) {
+        return this.request("DELETE", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userUuid)}`);
     }
     // ---- Messages ----
     /** Ordered message page after a sequence; use for history and reconnect sync. */
@@ -140,12 +155,14 @@ export class IMHttpClient {
             content_type: options.contentType ?? "text/markdown",
         }, options);
     }
-    /** Nested send variant; same semantics as sendMessage. */
-    sendMessageTo(conversationId, content, options = {}) {
-        return this.postMessage(`/api/v1/conversations/${encodeURIComponent(conversationId)}/messages`, {
-            content,
-            content_type: options.contentType ?? "text/markdown",
-        }, options);
+    /**
+     * Send a direct message to one other user, identified by their uuid:
+     * get-or-create the direct conversation, then send. Same idempotency
+     * semantics as sendMessage.
+     */
+    async sendDirectMessage(otherUserUuid, content, options = {}) {
+        const conversation = await this.createDirect(otherUserUuid);
+        return this.sendMessage(conversation.id, content, options);
     }
     async postMessage(path, body, options) {
         const key = options.idempotencyKey ?? randomId();

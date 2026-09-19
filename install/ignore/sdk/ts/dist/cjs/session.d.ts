@@ -29,12 +29,12 @@ export interface AirwayIMOptions {
 }
 export interface MembersAddedInfo {
     conversationId: string;
-    addedUserIds: number[];
+    addedUserUuids: string[];
     event: GatewayEvent;
 }
 export interface MembersRemovedInfo {
     conversationId: string;
-    removedUserId: number;
+    removedUserUuid: string;
     event: GatewayEvent;
 }
 export interface SessionEvents {
@@ -77,14 +77,15 @@ export declare class AirwayIM {
     listGroups(): Promise<Conversation[]>;
     createConversation(input: {
         kind: "direct" | "group";
-        memberIds: number[];
+        memberUuids: string[];
         title?: string;
     }): Promise<Conversation>;
-    createDirect(otherUserId: number): Promise<Conversation>;
-    createGroup(title: string | null, memberIds: number[]): Promise<Conversation>;
+    createDirect(otherUserUuid: string): Promise<Conversation>;
+    getDirectConversation(otherUserUuid: string): Promise<Conversation | null>;
+    createGroup(title: string | null, memberUuids: string[]): Promise<Conversation>;
     getConversation(uuid: string): Promise<ConversationDetails>;
-    addMembers(conversationId: string, memberIds: number[]): Promise<ConversationDetails>;
-    removeMember(conversationId: string, userId: number): Promise<ConversationDetails>;
+    addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails>;
+    removeMember(conversationId: string, userUuid: string): Promise<ConversationDetails>;
     /**
      * Initial load for a conversation: fetch messages after fromSequence
      * (default: last persisted sequence, else 0), track the sequence, and emit

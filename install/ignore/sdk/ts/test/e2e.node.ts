@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   const aliceMe = await alice.me();
   const bobMe = await bob.me();
   const carolMe = await carol.me();
-  ok("me(): profiles resolve", aliceMe.id > 0 && bobMe.id > 0 && carolMe.id > 0);
+  ok("me(): profiles resolve", Boolean(aliceMe.uuid) && Boolean(bobMe.uuid) && Boolean(carolMe.uuid));
 
   // ---- Realtime connect (auth first frame) ----
   const aliceEvents = collect(alice);
@@ -140,14 +140,19 @@ async function main(): Promise<void> {
   ok("gateway online for both users", alice.isOnline && bob.isOnline);
 
   // ---- Direct conversation + realtime fan-out ----
-  const direct = await alice.createDirect(bobMe.id);
+  const direct = await alice.createDirect(bobMe.uuid);
   ok("direct get-or-create", direct.kind === "direct" && direct.id.length === 26);
   await bob.history(direct.id); // track the conversation before traffic flows
+
+  const resolved = await alice.getDirectConversation(bobMe.uuid);
+  ok("getDirectConversation resolves the existing conversation", resolved?.id === direct.id);
+  const missing = await carol.getDirectConversation(bobMe.uuid);
+  ok("getDirectConversation returns null when absent", missing === null);
 
   const sent = await alice.sendMessage(direct.id, "hello **bob**", {
     contentType: "text/markdown",
   });
-  ok("sendMessage returns stored message", sent.sequence === 1 && sent.sender.id === aliceMe.id);
+  ok("sendMessage returns stored message", sent.sequence === 1 && sent.sender.uuid === aliceMe.uuid);
 
   const received = await waitFor("bob receives direct message in order", () =>
     bobEvents.messages.find((m) => m.id === sent.id),
@@ -159,7 +164,7 @@ async function main(): Promise<void> {
   );
 
   // ---- Group conversation ----
-  const group = await alice.createGroup("SDK E2E Group", [bobMe.id]);
+  const group = await alice.createGroup("SDK E2E Group", [bobMe.uuid]);
   ok("group created", group.kind === "group");
 
   const bobGroups = await bob.listGroups();
@@ -190,12 +195,12 @@ async function main(): Promise<void> {
   }
 
   // ---- Member management + events ----
-  const details = await alice.addMembers(group.id, [carolMe.id]);
-  ok("addMembers returns details with carol", details.members.some((m) => m.id === carolMe.id));
+  const details = await alice.addMembers(group.id, [carolMe.uuid]);
+  ok("addMembers returns details with carol", details.members.some((m) => m.uuid === carolMe.uuid));
   await waitFor("bob sees members.added event", () => bobEvents.added > 0);
 
-  const removedDetails = await alice.removeMember(group.id, carolMe.id);
-  ok("removeMember drops carol", !removedDetails.members.some((m) => m.id === carolMe.id));
+  const removedDetails = await alice.removeMember(group.id, carolMe.uuid);
+  ok("removeMember drops carol", !removedDetails.members.some((m) => m.uuid === carolMe.uuid));
   await waitFor("bob sees members.removed event", () => bobEvents.removed > 0);
 
   // Carol (kicked) must be denied group access now.
@@ -251,7 +256,7 @@ async function main(): Promise<void> {
 
   // ---- REST-only instance works without wsUrl ----
   const restOnly = await carol.me();
-  ok("REST-only instance (no wsUrl)", restOnly.id === carolMe.id);
+  ok("REST-only instance (no wsUrl)", restOnly.uuid === carolMe.uuid);
 
   alice.disconnect();
   bob.disconnect();
@@ -279,7 +284,7 @@ async function browserAdapterPhase(): Promise<void> {
     persistSequences: true,
   });
   const bobMe = await bob.me();
-  ok("browserAdapter: me()", bobMe.id > 0);
+  ok("browserAdapter: me()", Boolean(bobMe.uuid));
 
   const bobEvents = collect(bob);
   alice.connect();
@@ -288,7 +293,7 @@ async function browserAdapterPhase(): Promise<void> {
   await waitOnline(bob);
   ok("browserAdapter: gateway online", alice.isOnline && bob.isOnline);
 
-  const direct = await alice.createDirect(bobMe.id);
+  const direct = await alice.createDirect(bobMe.uuid);
   await bob.history(direct.id);
   const sent = await alice.sendMessage(direct.id, "hello from the browser adapter");
   const received = await waitFor("browserAdapter: realtime receive", () =>

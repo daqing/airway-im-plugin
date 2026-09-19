@@ -47,13 +47,13 @@ export interface AirwayIMOptions {
 
 export interface MembersAddedInfo {
   conversationId: string;
-  addedUserIds: number[];
+  addedUserUuids: string[];
   event: GatewayEvent;
 }
 
 export interface MembersRemovedInfo {
   conversationId: string;
-  removedUserId: number;
+  removedUserUuid: string;
   event: GatewayEvent;
 }
 
@@ -194,19 +194,19 @@ export class AirwayIM {
           .catch((err) => this.emit("error", err as Error));
         break;
       case "conversation.member_added":
-        if (event.added_user_ids?.length) {
+        if (event.added_user_uuids?.length) {
           this.emit("members.added", {
             conversationId: event.conversation_id,
-            addedUserIds: event.added_user_ids,
+            addedUserUuids: event.added_user_uuids,
             event,
           });
         }
         break;
       case "conversation.member_removed":
-        if (event.removed_user_id !== undefined) {
+        if (event.removed_user_uuid !== undefined) {
           this.emit("members.removed", {
             conversationId: event.conversation_id,
-            removedUserId: event.removed_user_id,
+            removedUserUuid: event.removed_user_uuid,
             event,
           });
         }
@@ -262,28 +262,32 @@ export class AirwayIM {
     return this.rest.listGroups();
   }
 
-  createConversation(input: { kind: "direct" | "group"; memberIds: number[]; title?: string }): Promise<Conversation> {
+  createConversation(input: { kind: "direct" | "group"; memberUuids: string[]; title?: string }): Promise<Conversation> {
     return this.rest.createConversation(input);
   }
 
-  createDirect(otherUserId: number): Promise<Conversation> {
-    return this.rest.createDirect(otherUserId);
+  createDirect(otherUserUuid: string): Promise<Conversation> {
+    return this.rest.createDirect(otherUserUuid);
   }
 
-  createGroup(title: string | null, memberIds: number[]): Promise<Conversation> {
-    return this.rest.createGroup(title, memberIds);
+  getDirectConversation(otherUserUuid: string): Promise<Conversation | null> {
+    return this.rest.getDirectConversation(otherUserUuid);
+  }
+
+  createGroup(title: string | null, memberUuids: string[]): Promise<Conversation> {
+    return this.rest.createGroup(title, memberUuids);
   }
 
   getConversation(uuid: string): Promise<ConversationDetails> {
     return this.rest.getConversation(uuid);
   }
 
-  addMembers(conversationId: string, memberIds: number[]): Promise<ConversationDetails> {
-    return this.rest.addMembers(conversationId, memberIds);
+  addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails> {
+    return this.rest.addMembers(conversationId, memberUuids);
   }
 
-  removeMember(conversationId: string, userId: number): Promise<ConversationDetails> {
-    return this.rest.removeMember(conversationId, userId);
+  removeMember(conversationId: string, userUuid: string): Promise<ConversationDetails> {
+    return this.rest.removeMember(conversationId, userUuid);
   }
 
   /**

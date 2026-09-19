@@ -118,7 +118,7 @@ paths:
                     kind: group
                     title: Airway IM Backend
                     avatar_url: null
-                    created_by: 1
+                    created_by: user-1
                     created_at: '2026-07-24T08:00:00Z'
                     updated_at: '2026-07-24T09:30:00Z'
                 message: null
@@ -138,7 +138,7 @@ paths:
       description: >-
         A direct request is get-or-create and can return 200 when the canonical
         conversation already exists. Every group request creates a new group.
-        The authenticated creator must not be included in member_ids.
+        The authenticated creator must not be included in member_uuids.
       security:
         - bearerAuth: []
       requestBody:
@@ -151,12 +151,12 @@ paths:
               direct:
                 value:
                   kind: direct
-                  member_ids: [2]
+                  member_uuids: [user-2]
               group:
                 value:
                   kind: group
                   title: Airway IM Backend
-                  member_ids: [2, 3]
+                  member_uuids: [user-2, user-3]
       responses:
         '200':
           description: Existing canonical direct conversation.
@@ -179,6 +179,47 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/conversations/direct/{user_uuid}:
+    get:
+      tags: [Conversations]
+      operationId: getDirectConversation
+      summary: Resolve the direct conversation with one user
+      description: >-
+        Read-only lookup of the authenticated user's direct conversation with
+        one peer by their stable uuid. Unlike the direct kind of
+        POST /api/v1/conversations, this never creates a conversation: a 404
+        means no direct conversation exists yet (or the peer uuid is unknown).
+        Clients resolve the conversation ID here once and then poll
+        GET /api/v1/conversations/{conversation_uuid}/messages for history.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_uuid
+          in: path
+          required: true
+          description: Stable uuid of the other user.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+      responses:
+        '200':
+          description: The existing direct conversation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationEnvelope'
+        '404':
+          description: >-
+            No direct conversation exists between the authenticated user and
+            that peer uuid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/group:
     post:
       tags: [Conversations]
@@ -186,9 +227,10 @@ paths:
       summary: Create a group conversation
       description: >-
         Creates a new group on every successful request. The authenticated user
-        becomes the owner. member_ids identifies the other users to add as
-        members; duplicate IDs and the authenticated user's ID are removed.
-        After normalization, at least one other existing user is required.
+        becomes the owner. member_uuids identifies the other users to add as
+        members by their stable uuid; duplicate uuids and the authenticated
+        user's own uuid are removed. After normalization, at least one other
+        existing user is required.
       security:
         - bearerAuth: []
       requestBody:
@@ -199,7 +241,7 @@ paths:
               $ref: '#/components/schemas/CreateGroupRequest'
             example:
               title: Airway IM Backend
-              member_ids: [2, 3]
+              member_uuids: [user-2, user-3]
       responses:
         '201':
           description: Group conversation created.
@@ -249,12 +291,12 @@ paths:
                   conversation_uuid: 01J2Q7D4N5R8TK6VD3SZ1H0Y9M
                   type: group
                   members:
-                    - id: 1
+                    - uuid: user-1
                       username: owner
                       nickname: Owner
                       avatar_url: https://avatars.example.com/owner.png
                       role: owner
-                    - id: 2
+                    - uuid: user-2
                       username: member
                       nickname: null
                       avatar_url: null
@@ -305,7 +347,7 @@ paths:
             schema:
               $ref: '#/components/schemas/AddMembersRequest'
             example:
-              member_ids: [4, 5]
+              member_uuids: [user-4, user-5]
       responses:
         '200':
           description: Updated conversation details with the active member list.
@@ -338,7 +380,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /api/v1/conversations/{conversation_uuid}/members/{user_id}:
+  /api/v1/conversations/{conversation_uuid}/members/{user_uuid}:
     delete:
       tags: [Conversations]
       operationId: removeConversationMember
@@ -360,14 +402,14 @@ paths:
           description: Opaque conversation identifier.
           schema:
             $ref: '#/components/schemas/ULID'
-        - name: user_id
+        - name: user_uuid
           in: path
           required: true
-          description: Numeric ID of the user to remove.
+          description: Stable uuid of the user to remove.
           schema:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            minLength: 1
+            maxLength: 64
       responses:
         '200':
           description: Updated conversation details with the active member list.
@@ -378,7 +420,7 @@ paths:
         '400':
           description: >-
             Invalid or expired credential, malformed conversation UUID or user
-            ID, non-group conversation, self-removal, or the target is the
+            UUID, non-group conversation, self-removal, or the target is the
             group owner.
           content:
             application/json:
@@ -938,11 +980,8 @@ components:
     User:
       type: object
       additionalProperties: false
-      required: [id, uuid, username, nickname, avatar_url, email, last_seen_at, created_at, updated_at]
+      required: [uuid, username, nickname, avatar_url, email, last_seen_at, created_at, updated_at]
       properties:
-        id:
-          type: integer
-          format: int64
         uuid:
           type: string
           description: Stable, unique identity assigned by the Airway application.
@@ -970,11 +1009,8 @@ components:
     AdminUser:
       type: object
       additionalProperties: false
-      required: [id, uuid, username, nickname, avatar_url, email, last_seen_at, token_version, created_at]
+      required: [uuid, username, nickname, avatar_url, email, last_seen_at, token_version, created_at]
       properties:
-        id:
-          type: integer
-          format: int64
         uuid:
           type: string
           description: Stable, unique identity assigned by the Airway application.
@@ -1003,18 +1039,29 @@ components:
     Sender:
       type: object
       additionalProperties: false
-      required: [id, username, nickname, avatar_url]
+      description: >-
+        Denormalized author profile resolved from the users table when the
+        message is read. It reflects the author's current profile, not a
+        snapshot taken at send time, so a changed nickname or avatar is
+        visible in old messages too.
+      required: [uuid, username, nickname, avatar_url]
       properties:
-        id:
-          type: integer
-          format: int64
+        uuid:
+          type: string
+          description: >-
+            Stable, unique identity assigned by the Airway application. Use it
+            to attribute messages, open direct conversations, and correlate
+            with sender fields in events; never with any numeric user ID.
         username:
           type: string
+          description: Host-assigned account handle; stable for the account's lifetime.
         nickname:
           type: [string, 'null']
+          description: Preferred display name; fall back to username for rendering when null.
         avatar_url:
           type: [string, 'null']
           format: uri
+          description: Avatar image URL; render a placeholder when null.
 
     Conversation:
       type: object
@@ -1032,8 +1079,8 @@ components:
           type: [string, 'null']
           format: uri
         created_by:
-          type: integer
-          format: int64
+          type: string
+          description: Stable uuid of the user who created the conversation.
         created_at:
           type: string
           format: date-time
@@ -1044,11 +1091,11 @@ components:
     ConversationMember:
       type: object
       additionalProperties: false
-      required: [id, username, nickname, avatar_url, role]
+      required: [uuid, username, nickname, avatar_url, role]
       properties:
-        id:
-          type: integer
-          format: int64
+        uuid:
+          type: string
+          description: Stable, unique identity assigned by the Airway application.
         username:
           type: string
         nickname:
@@ -1078,6 +1125,11 @@ components:
     Message:
       type: object
       additionalProperties: false
+      description: >-
+        A single chat message. The same shape is returned by both create
+        endpoints (201 created / 200 idempotent replay) and by the history
+        endpoint; clients render history and realtime deliveries from this
+        one object. See the Message object reference after the YAML block.
       required:
         - id
         - conversation_id
@@ -1089,8 +1141,15 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/ULID'
+          description: >-
+            Server-generated, globally unique message identifier. It never
+            changes; deduplicate HTTP and WebSocket results by it. Gateway
+            events reference the same value as message_id.
         conversation_id:
           $ref: '#/components/schemas/ULID'
+          description: >-
+            The conversation the message belongs to; equals that
+            conversation's id.
         sender:
           $ref: '#/components/schemas/Sender'
         content:
@@ -1098,19 +1157,33 @@ components:
           minLength: 1
           description: >-
             UTF-8 source text limited to 32768 encoded bytes; line endings are
-            normalized to LF. Illegal messages are returned as three asterisks.
-            OpenAPI maxLength is intentionally omitted because it counts Unicode
-            code points rather than encoded bytes.
+            normalized to LF before storage. Illegal messages are returned
+            with the literal content *** instead of the original text; the
+            Gateway message.moderated event is the signal to reload. OpenAPI
+            maxLength is intentionally omitted because it counts Unicode code
+            points rather than encoded bytes.
         content_type:
           type: string
           enum: [text/markdown, text/plain]
+          description: >-
+            Rendering hint chosen by the sender; text/markdown when the create
+            request omitted content_type. Render content accordingly and do
+            not switch rendering based on content itself.
         created_at:
           type: string
           format: date-time
+          description: Commit timestamp in UTC (RFC 3339). Set by the server; client-supplied values are ignored.
         sequence:
           type: integer
           format: int64
           minimum: 1
+          description: >-
+            Position of the message within its conversation, allocated
+            transactionally at commit time. Monotonically increasing per
+            conversation starting at 1; combined with conversation_id it forms
+            the total order clients sort by. History polling passes the last
+            seen sequence as after_sequence. An idempotent replay returns the
+            original message with its original sequence.
 
     AdminConversation:
       type: object
@@ -1139,8 +1212,8 @@ components:
           type: [string, 'null']
           format: uri
         created_by:
-          type: integer
-          format: int64
+          type: string
+          description: Stable uuid of the user who created the conversation.
         creator_username:
           type: string
         member_count:
@@ -1167,7 +1240,7 @@ components:
       required:
         - id
         - conversation_id
-        - sender_id
+        - sender_uuid
         - sender_username
         - sender_nickname
         - sender_avatar_url
@@ -1182,9 +1255,9 @@ components:
           $ref: '#/components/schemas/ULID'
         conversation_id:
           $ref: '#/components/schemas/ULID'
-        sender_id:
-          type: integer
-          format: int64
+        sender_uuid:
+          type: string
+          description: Stable, unique identity assigned by the Airway application.
         sender_username:
           type: string
         sender_nickname:
@@ -1213,24 +1286,25 @@ components:
     AddMembersRequest:
       type: object
       additionalProperties: false
-      required: [member_ids]
+      required: [member_uuids]
       properties:
-        member_ids:
+        member_uuids:
           type: array
           minItems: 1
           items:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            minLength: 1
+            maxLength: 64
           description: >-
-            Users to add. Duplicates and the authenticated user's ID are
-            removed; at least one other user must remain. All IDs must exist;
-            already-active members are skipped.
+            Users to add, by their stable uuid. Duplicates, empty values, and
+            the authenticated user's own uuid are removed; at least one other
+            user must remain. All uuids must exist; already-active members are
+            skipped.
 
     CreateConversationRequest:
       type: object
       additionalProperties: false
-      required: [kind, member_ids]
+      required: [kind, member_uuids]
       properties:
         kind:
           type: string
@@ -1238,35 +1312,37 @@ components:
         title:
           type: [string, 'null']
           description: Group display title; currently accepted for either kind.
-        member_ids:
+        member_uuids:
           type: array
           minItems: 1
           items:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            minLength: 1
+            maxLength: 64
           description: >-
-            Other users to add. Duplicates and the authenticated user's ID are
-            removed. Direct conversations must resolve to exactly one other user.
+            Other users to add, by their stable uuid. Duplicates, empty values,
+            and the authenticated user's own uuid are removed. Direct
+            conversations must resolve to exactly one other user.
 
     CreateGroupRequest:
       type: object
       additionalProperties: false
-      required: [member_ids]
+      required: [member_uuids]
       properties:
         title:
           type: [string, 'null']
           description: Optional group display title.
-        member_ids:
+        member_uuids:
           type: array
           minItems: 1
           items:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            minLength: 1
+            maxLength: 64
           description: >-
-            Users to add as members. Duplicates and the authenticated user's ID
-            are removed; at least one other existing user must remain.
+            Users to add as members, by their stable uuid. Duplicates, empty
+            values, and the authenticated user's own uuid are removed; at least
+            one other existing user must remain.
 
     CreateMessageRequest:
       type: object
@@ -1447,6 +1523,67 @@ components:
             $ref: '#/components/schemas/StorageError'
 ```
 
+## Message object reference
+
+Every message the API returns uses the same JSON shape, whether it comes from
+creating one (`POST /api/v1/messages`, `POST
+/api/v1/conversations/{conversation_id}/messages`) or reading history
+(`GET /api/v1/conversations/{conversation_id}/messages`). Clients render
+history and realtime deliveries from this one object, so its field contract is
+spelled out here.
+
+```json
+{
+  "id": "01J2Q8A4FQ8NA8R6YDJ2M98K3Q",
+  "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
+  "sender": {
+    "uuid": "user-1",
+    "username": "alice",
+    "nickname": "Alice",
+    "avatar_url": "https://cdn.example.com/a/alice.png"
+  },
+  "content": "Hello **Airway IM**!",
+  "content_type": "text/markdown",
+  "created_at": "2026-07-24T08:00:00Z",
+  "sequence": 1042
+}
+```
+
+| Field | Type | Contract |
+| --- | --- | --- |
+| `id` | string, 26-char ULID | Server-generated, globally unique message identifier. Assigned once and never changes. Deduplicate HTTP responses and WebSocket deliveries by it; gateway events carry the same value as `message_id`. |
+| `conversation_id` | string, 26-char ULID | The conversation the message belongs to; equals that conversation's `id`. Route the message to its chat window by this field. |
+| `sender.uuid` | string | The author's stable identity uuid. Use it for attribution, to open a direct conversation, and to compare against `me`; identity is uuid-only across the API and events. |
+| `sender.username` | string | Host-assigned account handle; stable for the account's lifetime. |
+| `sender.nickname` | string \| null | Preferred display name. Fall back to `username` for rendering when null. |
+| `sender.avatar_url` | string \| null | Avatar image URL; render a placeholder when null. |
+| `content` | string | The message body, 1–32768 UTF-8 encoded bytes. Line endings are normalized to LF before storage, so a CRLF send round-trips as LF. If the message was marked illegal, `content` is the literal `***` — treat that as a placeholder, not as user text. |
+| `content_type` | string | `text/markdown` or `text/plain`; rendering hint chosen by the sender (`text/markdown` when the create request omitted it). Render `content` accordingly. |
+| `created_at` | string, RFC 3339 UTC | Commit timestamp set by the server; the client cannot influence it. Display it converted to the viewer's local time zone. |
+| `sequence` | integer ≥ 1 | Position of the message within its conversation. Allocated transactionally at commit, monotonically increasing per conversation starting at 1. `(conversation_id, sequence)` is the total order clients sort by. |
+
+Usage notes for clients:
+
+- **Ordering.** Sort by `sequence` within a conversation, never by
+  `created_at` (ties are possible and clock skew makes it unreliable).
+- **Pagination and sync.** Poll or page history with `after_sequence` set to
+  the last stored sequence of that conversation; a full page ends exactly at
+  the `limit` value (1–200, server default and fallback 100). When the gateway
+  reveals a sequence gap, fetch history starting from the last stored sequence.
+- **Deduplication.** The same message can arrive over both HTTP and the
+  gateway; keep one copy per `id`. Repeated gateway deliveries repeat the
+  `event_id`, deduplicate on that separately.
+- **Idempotent retries.** Replaying a send with the same `Idempotency-Key`
+  answers `200` with the original message — including its original `id` and
+  `sequence` — so a retried send must not create a second local entry.
+- **Moderation.** After an administrator marks a message illegal, reads return
+  `content` as `***`; the gateway `message.moderated` event carries the
+  affected `message_id` and `sequence`, and the client should reload from
+  `sequence - 1` and replace its local copy (see the gateway contract below).
+- **Sender profile.** `sender` reflects the author's *current* profile, not a
+  send-time snapshot; a later nickname or avatar change is visible in old
+  messages on the next read.
+
 ## WebSocket Gateway companion contract
 
 OpenAPI does not describe the long-lived Gateway frames. The macOS client
@@ -1473,7 +1610,7 @@ socket. A committed message is delivered at least once as a server event:
   "message_id": "01J2Q8A4FQ8NA8R6YDJ2M98K3Q",
   "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
   "sequence": 1042,
-  "targets": {"user_ids":[1,2]}
+  "targets": {"user_uuids":["user-1","user-2"]}
 }
 ```
 
@@ -1491,8 +1628,8 @@ just added:
   "event_id": "01J2Q8A4FQ8NA8R6YDJ2M98K3R",
   "event": "conversation.member_added",
   "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
-  "added_user_ids": [4, 5],
-  "targets": {"user_ids":[1,2,4,5]}
+  "added_user_uuids": ["user-4", "user-5"],
+  "targets": {"user_uuids":["user-1","user-2","user-4","user-5"]}
 }
 ```
 
@@ -1508,8 +1645,8 @@ the removed user (so their client learns it was kicked):
   "event_id": "01J2Q8A4FQ8NA8R6YDJ2M98K3S",
   "event": "conversation.member_removed",
   "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
-  "removed_user_id": 5,
-  "targets": {"user_ids":[1,2,5]}
+  "removed_user_uuid": "user-5",
+  "targets": {"user_uuids":["user-1","user-2","user-5"]}
 }
 ```
 

@@ -1,7 +1,6 @@
 // Data model types mirroring deps/im/docs/api/openapi.md.
 
 export interface User {
-  id: number;
   uuid: string;
   username: string;
   nickname: string | null;
@@ -17,7 +16,7 @@ export interface Conversation {
   kind: "direct" | "group";
   title: string | null;
   avatar_url: string | null;
-  created_by: number;
+  created_by: string;
   created_at: string;
   updated_at: string;
 }
@@ -25,7 +24,7 @@ export interface Conversation {
 export type MemberRole = "owner" | "admin" | "member";
 
 export interface ConversationMember {
-  id: number;
+  uuid: string;
   username: string;
   nickname: string | null;
   avatar_url: string | null;
@@ -39,7 +38,7 @@ export interface ConversationDetails {
 }
 
 export interface Sender {
-  id: number;
+  uuid: string;
   username: string;
   nickname: string | null;
   avatar_url: string | null;
@@ -78,9 +77,9 @@ export interface GatewayEvent {
   message_id?: string;
   conversation_id: string;
   sequence?: number;
-  added_user_ids?: number[];
-  removed_user_id?: number;
-  targets?: { user_ids: number[] };
+  added_user_uuids?: string[];
+  removed_user_uuid?: string;
+  targets?: { user_uuids: string[] };
 }
 
 export type ConnectionStatus =

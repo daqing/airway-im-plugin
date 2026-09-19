@@ -105,19 +105,17 @@ handed to the client by its own platform:
 2. After the login succeeds, the platform's backend reads `(name, uuid)`
    from its own user table and obtains the credential
    **server-to-server**: it calls the Airway project's minting endpoint
-   `POST /internal/v1/credentials` with `IM_INTERNAL_SECRET` (§4.3), or
-   — where the Airway project operator hands out the signing secret — signs
-   locally with `IM_AUTH_SECRET` in any language (§4.2; HMAC-SHA256 is
-   a standard primitive, no Go code involved). Either way, plaintext
+   `POST /internal/v1/credentials` with `IM_INTERNAL_SECRET` (§4.3).
+   Platform backends are never given the signing secret, and plaintext
    `(name, uuid)` is never accepted from a client.
 3. The platform's backend returns the finished credential in its login
    response; the client only carries and presents it (§5). It holds no
    secret: it can neither mint nor alter a credential.
 
-The preferred resale path is the minting API: `IM_AUTH_SECRET` never
-leaves the Airway service, platform backends hold only
-`IM_INTERNAL_SECRET`, and minted credentials carry `token_version`, so
-each platform's users stay individually revocable (§9.1).
+The only path for third-party platform backends is the minting API:
+`IM_AUTH_SECRET` never leaves the Airway service, platform backends hold
+only `IM_INTERNAL_SECRET`, and minted credentials carry `token_version`,
+so each platform's users stay individually revocable (§9.1).
 
 Two hard consequences follow:
 
@@ -145,9 +143,10 @@ the HMAC before trusting the claims.
 The Airway backend signs locally with `IM_AUTH_SECRET`. This adds no
 network hop to the login flow, and HMAC-SHA256 is a standard primitive
 available in every server language (Go, Node.js, Python, PHP, Java, …)
-— no Go code is embedded anywhere. In a resale topology this option is
-for platforms the operator explicitly trusts with the signing secret;
-otherwise integrate through the minting API (§4.3).
+— no Go code is embedded anywhere. This option is reserved for the
+Airway project's own backend: third-party platform backends in a resale
+topology always integrate through the minting API (§4.3) and are never
+given the signing secret.
 
 Go:
 
@@ -200,6 +199,30 @@ def mint_credential(secret: str, uuid: str, name: str, ttl_seconds: int) -> str:
     ).rstrip(b"=").decode()
     return f"im1.{payload}.{sig}"
 ```
+
+Ruby:
+
+```ruby
+require "base64"
+require "json"
+require "openssl"
+
+def mint_credential(secret, uuid, name, ttl_seconds)
+  now = Time.now.to_i
+  payload = Base64.urlsafe_encode64(
+    JSON.generate({ uuid: uuid, name: name, iat: now, exp: now + ttl_seconds }),
+    padding: false
+  )
+  signature = Base64.urlsafe_encode64(
+    OpenSSL::HMAC.digest("sha256", secret, "im1.#{payload}"),
+    padding: false
+  )
+  "im1.#{payload}.#{signature}"
+end
+```
+
+The `airway-im-sdk-ruby` gem wraps this as `AirwayIM::Credentials.sign`
+(plus decode/verify helpers and the whole IM API).
 
 The Airway project typically mints a credential when its own session is established
 (login, token refresh) and returns it to the client alongside its own
@@ -266,8 +289,8 @@ application message, within 10 seconds of the upgrade:
 ```
 
 The gateway forwards the credential to the backend's
-`GET /internal/v1/auth`, which verifies it and returns the internal
-`user_id`. On success the connection replies
+`GET /internal/v1/auth`, which verifies it and returns the user's
+`uuid`. On success the connection replies
 `{"code":0,"data":"OK","message":null}` and is bound to the user; on
 failure or timeout it is closed with code `1008`. See
 [`gateway.md`](gateway.md) for the full wire protocol.
@@ -297,9 +320,10 @@ Every successful verification resolves the claims onto the `users` table
    authenticating every HTTP request does not become a write on every
    request.
 
-The internal numeric `users.id` is what conversations, messages, and
-gateway routing reference; the Airway project's `uuid` never appears in delivery
-events or inter-service traffic.
+The Airway project's `uuid` is the sole user identifier across client APIs,
+delivery events, and inter-service traffic; the internal numeric `users.id`
+never leaves the database — it only links `conversation_members`,
+`messages.sender_id`, and `direct_conversations` rows.
 
 ## 7. Admin visibility
 
@@ -312,7 +336,7 @@ dashboard:
 - `POST /admin/api/users/{uuid}/revoke` invalidates a user's outstanding
   credentials and kicks their live connections (§9).
 - `GET /admin/api/status` aggregates user counts with gateway and
-  delivery metrics, plus the online user IDs reported by the gateway's
+  delivery metrics, plus the online user uuids reported by the gateway's
   `GET /internal/v1/online`. With multiple gateway instances, merge the
   per-instance lists; `last_seen_at` remains the durable fallback for
   "recently active".

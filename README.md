@@ -81,13 +81,13 @@ Design contracts:
   Airway project (an independently deployed Go microservice) resells IM
   to third-party platforms, their PHP/Java backends mint credentials
   server-to-server through the internal minting API and never need the
-  signing secret; backends the operator fully trusts may also sign
-  locally in any language.
+  signing secret — local signing is reserved for the Airway project's
+  own backend, never handed to third-party platforms.
 - Clients provide no identity data and hold no secret: a user logs in
   through their own platform's existing login (password, SMS,
   `wx.login`, …), that platform's backend reads `(name, uuid)` from its
-  own user table and obtains the credential from the Airway project's minting API
-  (or signs it locally), and the finished credential is returned in the
+  own user table and obtains the credential from the Airway project's minting API,
+  and the finished credential is returned in the
   login response; the client only carries and presents it. The public
   API never issues credentials — it only verifies — and the minting
   endpoint is internal-only and secret protected. A platform without a
@@ -106,7 +106,7 @@ Design contracts:
   uniqueness, get-or-create semantics) and `group` (creator becomes `owner`,
   arbitrary member sets, `owner`/`admin`/`member` roles).
 - `POST /api/v1/conversations/:uuid/members` adds members to an existing group
-  and `DELETE /api/v1/conversations/:uuid/members/:user_id` removes one
+  and `DELETE /api/v1/conversations/:uuid/members/:user_uuid` removes one
   (owner/admin; an admin manages plain members only; the owner cannot be
   removed). Both are idempotent and fan out `conversation.member_added` /
   `conversation.member_removed` events to all active members — a removal also
@@ -137,7 +137,7 @@ Design contracts:
 - `/admin/api` with session login (`IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD`),
   12-hour in-memory sessions.
 - System status aggregating database counters plus live gateway/delivery
-  metrics and online user IDs; user listing with last-seen timestamps.
+  metrics and online user uuids; user listing with last-seen timestamps.
 - Credential revocation: `POST /admin/api/users/:uuid/revoke` bumps the
   user's `token_version` (invalidating backend-minted credentials) and
   kicks live gateway connections.
@@ -164,14 +164,16 @@ Design contracts:
 
 | Path | Role | Default port |
 | --- | --- | --- |
-| repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin (package `implugin`): IM API, admin API, internal API, migrations, REPL models | — |
+| repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin contract (package `implugin`): plugin registration, public routes, internal listener boot, REPL models | — |
+| [`install/lib/im/app/`](install/lib/im/app/) | Plugin implementation compiled into the plugin binary (never copied to the host): IM API, admin API, internal API, auth, models, repo | — |
 | [`install/deps/im/gateway/`](install/deps/im/gateway/) | Standalone Go module (shipped to Airway projects via `plugin:install`): WebSocket gateway | 1910 |
 | [`install/deps/im/delivery/`](install/deps/im/delivery/) | Standalone Go module (shipped to Airway projects via `plugin:install`): transactional-outbox publisher | 1920 |
 | [`install/ignore/client/`](install/ignore/client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
 | [`install/ignore/sdk/ts/`](install/ignore/sdk/ts/) | JavaScript/TypeScript SDK (npm package `airway-im-sdk-ts`): typed REST client, realtime gateway, and sequence-based sync engine, with built-in WeChat Mini Program and browser adapters | — |
+| [`install/ignore/sdk/ruby/`](install/ignore/sdk/ruby/) | Ruby SDK (gem `airway-im-sdk-ruby`): credential signing/minting, REST client for the IM API, and admin API client for server-side Ruby applications | — |
 | [`install/deps/im/docs/`](install/deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
 
-Key plugin packages:
+Key plugin packages (under `install/lib/im/`):
 
 | Package | Contents |
 | --- | --- |
@@ -212,8 +214,10 @@ listener for it (`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`).
 services arrive at `deps/im/gateway` and `deps/im/delivery` (their
 `go.mod.templ` files are installed as `go.mod`; existing files are
 never overwritten). Run the Airway project's `db:migrate` to create the IM tables, and
-set `IM_AUTH_SECRET` (plus `IM_INTERNAL_SECRET` for the realtime path) in the
-Airway project's environment.
+set `IM_AUTH_SECRET` (credential signing) and `IM_INTERNAL_SECRET` (internal
+API auth, shared with gateway/delivery) in the Airway project's environment —
+the server fails fast at boot when either is missing, logging the variables
+to set.
 
 ### Running standalone
 
@@ -289,8 +293,11 @@ Users are identified by the Airway application's `(name, uuid)` pair, signed
 into an HMAC credential. A user is auto-registered in the `users` table the
 first time a valid credential is presented — there is no separate
 provisioning step. The full format, Airway-side signing examples (Go,
-Node.js, Python), and rotation rules are in
+Node.js, Python, Ruby), and rotation rules are in
 [`install/deps/im/docs/design/identity.md`](install/deps/im/docs/design/identity.md).
+Ruby applications can also use the SDK gem (`airway-im-sdk-ruby`,
+[`install/ignore/sdk/ruby/`](install/ignore/sdk/ruby/)), which wraps credential
+minting and the whole IM API.
 
 For local development, the quickest way to get a credential is the
 server-to-server minting endpoint on the internal listener:
@@ -316,18 +323,18 @@ including error codes and the WebSocket event format — is in
 [`install/deps/im/docs/api/openapi.md`](install/deps/im/docs/api/openapi.md).
 
 ```bash
-# Create a group with user 2 (bob) as a member
+# Create a group with bob (uuid user-2) as a member
 curl -sX POST http://127.0.0.1:1905/api/v1/group \
   -H "Authorization: Bearer <alice credential>" \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Backend Team","member_ids":[2]}'
+  -d '{"title":"Backend Team","member_uuids":["user-2"]}'
 # → {"code":0,"data":{"id":"01M2ET18SA97XMFAG359T5TABH","kind":"group",…}}
 
 # Create a direct conversation (idempotent: same pair → same conversation)
 curl -sX POST http://127.0.0.1:1905/api/v1/conversations \
   -H "Authorization: Bearer <alice credential>" \
   -H 'Content-Type: application/json' \
-  -d '{"kind":"direct","member_ids":[2]}'
+  -d '{"kind":"direct","member_uuids":["user-2"]}'
 
 # Send a message — safe to retry with the same Idempotency-Key
 curl -sX POST http://127.0.0.1:1905/api/v1/messages \
@@ -359,7 +366,7 @@ HTTP API surface:
 | `POST /api/v1/conversations` | Create direct/group conversation |
 | `GET /api/v1/conversations/:uuid` | Conversation details and members |
 | `POST /api/v1/conversations/:uuid/members` | Add members to a group (owner/admin) |
-| `DELETE /api/v1/conversations/:uuid/members/:user_id` | Remove a member from a group (owner/admin) |
+| `DELETE /api/v1/conversations/:uuid/members/:user_uuid` | Remove a member from a group (owner/admin) |
 | `GET /api/v1/conversations/:uuid/messages?after_sequence=N` | Message history / sync |
 | `POST /api/v1/conversations/:uuid/messages` | Send message to a conversation |
 | `POST /api/v1/messages` | Send message by conversation id |

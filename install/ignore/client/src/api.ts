@@ -2,7 +2,6 @@
 // See deps/im/docs/api/openapi.md for the contract this implements.
 
 export interface User {
-  id: number;
   uuid: string;
   username: string;
   nickname: string | null;
@@ -18,13 +17,13 @@ export interface Conversation {
   kind: "direct" | "group";
   title: string | null;
   avatar_url: string | null;
-  created_by: number;
+  created_by: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface ConversationMember {
-  id: number;
+  uuid: string;
   username: string;
   nickname: string | null;
   avatar_url: string | null;
@@ -38,7 +37,7 @@ export interface ConversationDetails {
 }
 
 export interface Sender {
-  id: number;
+  uuid: string;
   username: string;
   nickname: string | null;
   avatar_url: string | null;
@@ -65,7 +64,7 @@ export interface AdminConversation {
   kind: "group";
   title: string | null;
   avatar_url: string | null;
-  created_by: number;
+  created_by: string;
   creator_username: string;
   member_count: number;
   message_count: number;
@@ -193,10 +192,10 @@ export class IMClient {
     return this.request<Conversation[]>("GET", "/api/v1/conversations?type=group");
   }
 
-  createGroup(title: string | null, memberIds: number[]): Promise<Conversation> {
+  createGroup(title: string | null, memberUuids: string[]): Promise<Conversation> {
     return this.request<Conversation>("POST", "/api/v1/group", {
       title,
-      member_ids: memberIds,
+      member_uuids: memberUuids,
     });
   }
 
@@ -207,18 +206,18 @@ export class IMClient {
     );
   }
 
-  addMembers(conversationId: string, memberIds: number[]): Promise<ConversationDetails> {
+  addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails> {
     return this.request<ConversationDetails>(
       "POST",
       `/api/v1/conversations/${encodeURIComponent(conversationId)}/members`,
-      { member_ids: memberIds },
+      { member_uuids: memberUuids },
     );
   }
 
-  removeMember(conversationId: string, userId: number): Promise<ConversationDetails> {
+  removeMember(conversationId: string, userUuid: string): Promise<ConversationDetails> {
     return this.request<ConversationDetails>(
       "DELETE",
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${userId}`,
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userUuid)}`,
     );
   }
 

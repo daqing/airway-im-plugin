@@ -38,19 +38,25 @@ export declare class IMHttpClient {
     /** Create or resolve a conversation. Direct requests are get-or-create (may return 200). */
     createConversation(input: {
         kind: "direct" | "group";
-        /** Other members; the authenticated user must not be included. */
-        memberIds: number[];
+        /** Other members by their stable identity uuid; the authenticated user must not be included. */
+        memberUuids: string[];
         title?: string;
     }): Promise<Conversation>;
-    /** Get-or-create a direct conversation with one other user. */
-    createDirect(otherUserId: number): Promise<Conversation>;
+    /** Get-or-create a direct conversation with one other user, by uuid. */
+    createDirect(otherUserUuid: string): Promise<Conversation>;
+    /**
+     * The direct conversation with one other user by uuid, or null when none
+     * exists yet (read-only; createDirect get-or-creates instead). Combine with
+     * listMessages to poll and display the history with that user.
+     */
+    getDirectConversation(otherUserUuid: string): Promise<Conversation | null>;
     /** Create a new group; the authenticated user becomes its owner. */
-    createGroup(title: string | null, memberIds: number[]): Promise<Conversation>;
+    createGroup(title: string | null, memberUuids: string[]): Promise<Conversation>;
     getConversation(uuid: string): Promise<ConversationDetails>;
-    /** Add members to a group (owner/admin; idempotent for already-active members). */
-    addMembers(conversationId: string, memberIds: number[]): Promise<ConversationDetails>;
-    /** Remove one member from a group (owner/admin; cannot remove self or the owner). */
-    removeMember(conversationId: string, userId: number): Promise<ConversationDetails>;
+    /** Add members (by uuid) to a group (owner/admin; idempotent for already-active members). */
+    addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails>;
+    /** Remove one member (by uuid) from a group (owner/admin; cannot remove self or the owner). */
+    removeMember(conversationId: string, userUuid: string): Promise<ConversationDetails>;
     /** Ordered message page after a sequence; use for history and reconnect sync. */
     listMessages(conversationId: string, options?: ListMessagesOptions): Promise<ChatMessage[]>;
     /**
@@ -59,8 +65,12 @@ export declare class IMHttpClient {
      * never duplicate a message; pass options.idempotencyKey to control it.
      */
     sendMessage(conversationId: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
-    /** Nested send variant; same semantics as sendMessage. */
-    sendMessageTo(conversationId: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
+    /**
+     * Send a direct message to one other user, identified by their uuid:
+     * get-or-create the direct conversation, then send. Same idempotency
+     * semantics as sendMessage.
+     */
+    sendDirectMessage(otherUserUuid: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
     private postMessage;
     /**
      * Upload a file (development-stage API: currently no auth middleware).

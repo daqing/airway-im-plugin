@@ -76,7 +76,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
   get-or-create 语义）与 `group`（创建者成为 `owner`，成员任意，
   支持 `owner`/`admin`/`member` 角色）。
 - `POST /api/v1/conversations/:uuid/members` 向已有群聊添加成员，
-  `DELETE /api/v1/conversations/:uuid/members/:user_id` 移除成员
+  `DELETE /api/v1/conversations/:uuid/members/:user_uuid` 移除成员
   （仅 owner/admin；admin 只能管理普通成员；owner 不可被移除）。两者均幂等，
   并向全体在线成员扇出 `conversation.member_added` / `conversation.member_removed`
   事件 —— 移除事件也会通知被移除的用户。
@@ -253,8 +253,8 @@ Go 代码，因此 Airway 项目以 API 方式对接平台后端，凭证签发�
   `POST /internal/v1/credentials`（携带 `IM_INTERNAL_SECRET`）以
   server-to-server 方式获取凭证，再随自己的登录响应下发给前端。
 - 签名密钥 `IM_AUTH_SECRET` 只保存在 Airway 项目的 IM 服务端，第三方平台后端只需
-  `IM_INTERNAL_SECRET`。若 Airway 项目方明确交付 secret，平台后端也可用任意语言
-  本地签名（HMAC-SHA256 是标准能力，无需嵌入 Go 代码）。
+  `IM_INTERNAL_SECRET`，一律通过内部签发接口获取凭证——不持有签名密钥，
+  也不在平台侧本地签名。
 - IM 的公开 API（`:1905`）只验签、从不给客户端签发凭证；签发端点默认只
   监听回环地址。第三方平台后端与 Airway 项目不在同一台机器时，两者必须
   处在同一个内网（同 VPC / 机房，或 VPN、专线打通），由 Airway 项目方把
@@ -285,18 +285,18 @@ IM API。凭证默认 24 小时过期，按需重新签发即可。
 WebSocket 事件格式）见 [`deps/im/docs/api/openapi.md`](api/openapi.md)。
 
 ```bash
-# 创建群聊，拉用户 2（bob）入群
+# 创建群聊，把 bob（uuid 为 user-2）拉入群
 curl -sX POST http://127.0.0.1:1905/api/v1/group \
   -H "Authorization: Bearer <alice 凭证>" \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Backend Team","member_ids":[2]}'
+  -d '{"title":"Backend Team","member_uuids":["user-2"]}'
 # → {"code":0,"data":{"id":"01M2ET18SA97XMFAG359T5TABH","kind":"group",…}}
 
 # 创建单聊（幂等：同一对用户始终得到同一个会话）
 curl -sX POST http://127.0.0.1:1905/api/v1/conversations \
   -H "Authorization: Bearer <alice 凭证>" \
   -H 'Content-Type: application/json' \
-  -d '{"kind":"direct","member_ids":[2]}'
+  -d '{"kind":"direct","member_uuids":["user-2"]}'
 
 # 发送消息 —— 携带相同 Idempotency-Key 可安全重试
 curl -sX POST http://127.0.0.1:1905/api/v1/messages \
@@ -328,7 +328,7 @@ HTTP API 一览：
 | `POST /api/v1/conversations` | 创建单聊/群聊 |
 | `GET /api/v1/conversations/:uuid` | 会话详情与成员 |
 | `POST /api/v1/conversations/:uuid/members` | 向群聊添加成员（owner/admin） |
-| `DELETE /api/v1/conversations/:uuid/members/:user_id` | 从群聊移除成员（owner/admin） |
+| `DELETE /api/v1/conversations/:uuid/members/:user_uuid` | 从群聊移除成员（owner/admin） |
 | `GET /api/v1/conversations/:uuid/messages?after_sequence=N` | 历史消息 / 同步 |
 | `POST /api/v1/conversations/:uuid/messages` | 向指定会话发消息 |
 | `POST /api/v1/messages` | 按会话 ID 发消息 |

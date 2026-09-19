@@ -49,7 +49,7 @@ async function waitUntil(cond: () => boolean, timeoutMs: number, what: string): 
 class Participant {
   client!: IMClient;
   gateway!: GatewayClient;
-  id = 0;
+  uuid = "";
   events: GatewayEvent[] = [];
   online = false;
 
@@ -65,9 +65,8 @@ class Participant {
       name: this.name,
       nickname: this.name,
     }, INTERNAL_API);
-    this.id = (await this.client.me()).id;
+    this.uuid = (await this.client.me()).uuid;
   }
-
   connect(): void {
     this.gateway = new GatewayClient(GATEWAY, this.client.credentialValue, {
       onEvent: (e) => this.events.push(e),
@@ -91,14 +90,14 @@ async function main(): Promise<void> {
   ];
   for (const p of [alice, bob, carol, dave]) await p.setup();
   report("identity: mint credentials + auto-register users", true,
-    `ids: alice=${alice.id} bob=${bob.id} carol=${carol.id}`);
+    `uuids: ${[alice, bob, carol].map((p) => `${p.name}=${p.uuid}`).join(" ")}`);
 
   // 1. Group creation and membership.
-  const group = await alice.client.createGroup(`demo-${Date.now()}`, [bob.id, carol.id]);
+  const group = await alice.client.createGroup(`demo-${Date.now()}`, [bob.uuid, carol.uuid]);
   const details = await bob.client.getConversation(group.id);
   const rolesOk =
     details.members.length === 3 &&
-    details.members.find((m) => m.id === alice.id)?.role === "owner" &&
+    details.members.find((m) => m.uuid === alice.uuid)?.role === "owner" &&
     details.members.filter((m) => m.role === "member").length === 2;
   report("conversation: create group, roles assigned", rolesOk,
     details.members.map((m) => `${m.username}:${m.role}`).join(", "));
@@ -136,10 +135,10 @@ async function main(): Promise<void> {
   const beforeAdd = [alice, bob, carol, dave].map(
     (p) => p.events.filter((e) => e.event === "conversation.member_added").length,
   );
-  const addResult = await alice.client.addMembers(group.id, [dave.id]);
+  const addResult = await alice.client.addMembers(group.id, [dave.uuid]);
   const addOk =
     addResult.members.length === 4 &&
-    addResult.members.some((m) => m.id === dave.id && m.role === "member");
+    addResult.members.some((m) => m.uuid === dave.uuid && m.role === "member");
   await waitUntil(
     () => [alice, bob, carol, dave].every(
       (p, i) => p.events.filter((e) => e.event === "conversation.member_added").length > beforeAdd[i]),
@@ -211,9 +210,9 @@ async function main(): Promise<void> {
   const beforeRemove = [alice, bob, carol, dave].map(
     (p) => p.events.filter((e) => e.event === "conversation.member_removed").length,
   );
-  const removeResult = await alice.client.removeMember(group.id, dave.id);
+  const removeResult = await alice.client.removeMember(group.id, dave.uuid);
   const removedFromResponse =
-    removeResult.members.length === 3 && !removeResult.members.some((m) => m.id === dave.id);
+    removeResult.members.length === 3 && !removeResult.members.some((m) => m.uuid === dave.uuid);
   await waitUntil(
     () => [alice, bob, carol, dave].every(
       (p, i) => p.events.filter((e) => e.event === "conversation.member_removed").length > beforeRemove[i]),
@@ -228,7 +227,7 @@ async function main(): Promise<void> {
     daveSendDenied = err instanceof IMError && err.status === 403;
   }
   // Removing again is an idempotent no-op.
-  const again = await alice.client.removeMember(group.id, dave.id);
+  const again = await alice.client.removeMember(group.id, dave.uuid);
   report("membership: owner removes member, kick event received, access revoked",
     removedFromResponse && !daveStillSees && daveSendDenied && again.members.length === 3,
     `in_list=${daveStillSees} send_denied=${daveSendDenied}`);

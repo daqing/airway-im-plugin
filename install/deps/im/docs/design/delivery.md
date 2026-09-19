@@ -163,14 +163,14 @@ An example Gateway command is:
   "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
   "sequence": 182736,
   "targets": {
-    "user_ids": ["user-1", "user-7", "user-9"]
+    "user_uuids": ["user-1", "user-7", "user-9"]
   }
 }
 ```
 
 Several recipients on one Gateway are represented by one broker event. The
-Gateway resolves those user IDs against its local connection index and sends to
-all matching devices.
+Gateway resolves those user uuids against its local connection index and sends
+to all matching devices.
 
 This strategy is appropriate for direct conversations, groups with tens or
 hundreds of members, and low-traffic groups where an occasional membership scan
@@ -222,20 +222,20 @@ on `event_id` deduplication.
 
 Bearer tokens are authentication credentials, not routing keys. A Gateway
 validates the token when a connection authenticates, resolves it to the
-internal `user_id`, and never includes the token in delivery events, subjects,
+user's `uuid`, and never includes the token in delivery events, subjects,
 logs, metrics, or traces.
 
 The distributed session registry stores ephemeral mappings such as:
 
 ```text
 session:{connection_id}
-  user_id
+  user_uuid
   gateway_instance_id
   device_id
   region
   expires_at
 
-user_sessions:{user_id}
+user_sessions:{user_uuid}
   connection_id -> gateway_instance_id
 ```
 
@@ -247,7 +247,7 @@ Each Gateway also maintains in-memory indexes for its own connections:
 
 ```text
 connection_id -> connection
-user_id -> local connection set
+user_uuid -> local connection set
 conversation_id -> local connection set
 conversation_id -> local subscription reference count
 ```
