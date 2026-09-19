@@ -63,6 +63,31 @@ module AirwayIM
       client.create_conversation(kind: "group", member_uuids: %w[uuid-bob uuid-carol])
     end
 
+    def test_direct_conversation_returns_existing_conversation
+      conversation = { "id" => "01AB", "kind" => "direct", "title" => nil }
+      client = with_server do |req|
+        assert_equal "GET", req.method
+        assert_equal "/api/v1/conversations/direct/uuid-bob", req.path
+        [200, envelope(conversation)]
+      end
+      assert_equal conversation, client.direct_conversation("uuid-bob")
+    end
+
+    def test_direct_conversation_returns_nil_when_absent
+      client = with_server do |_req|
+        [404, envelope(nil, code: 11_001, message: "Conversation not found")]
+      end
+      assert_nil client.direct_conversation("uuid-bob")
+    end
+
+    def test_direct_conversation_raises_other_errors
+      client = with_server do |_req|
+        [500, envelope(nil, code: 10_000, message: "boom")]
+      end
+      error = assert_raises(Error) { client.direct_conversation("uuid-bob") }
+      assert_equal 10_000, error.code
+    end
+
     def test_conversation_and_member_management_escape_ids
       client = with_server do |req|
         case req.method
@@ -166,13 +191,37 @@ module AirwayIM
       client.send_message("01AB", "hi", content_type: "text/plain", idempotency_key: "my-key")
     end
 
-    def test_send_message_to_uses_nested_path
+    def test_send_direct_message_creates_conversation_then_sends
+      paths = []
       client = with_server do |req|
-        assert_equal "/api/v1/conversations/01AB/messages", req.path
-        assert_equal({ "content" => "hi", "content_type" => "text/markdown" }, JSON.parse(req.body))
-        [201, envelope({})]
+        paths << req.path
+        case req.path
+        when "/api/v1/conversations"
+          assert_equal({ "kind" => "direct", "member_uuids" => ["uuid-bob"] }, JSON.parse(req.body))
+          [201, envelope({ "id" => "01AB", "kind" => "direct" })]
+        when "/api/v1/messages"
+          assert_equal({ "conversation_id" => "01AB", "content" => "hi",
+                         "content_type" => "text/markdown" }, JSON.parse(req.body))
+          [201, envelope({ "id" => "01M1", "sequence" => 1 })]
+        end
       end
-      client.send_message_to("01AB", "hi")
+      message = client.send_direct_message("uuid-bob", "hi")
+      assert_equal "01M1", message["id"]
+      assert_equal ["/api/v1/conversations", "/api/v1/messages"], paths
+    end
+
+    def test_send_direct_message_passes_options_to_send
+      client = with_server do |req|
+        if req.path == "/api/v1/messages"
+          assert_equal "my-key", req.headers["idempotency-key"]
+          assert_equal({ "conversation_id" => "01AB", "content" => "hi",
+                         "content_type" => "text/plain" }, JSON.parse(req.body))
+          [201, envelope({})]
+        else
+          [201, envelope({ "id" => "01AB", "kind" => "direct" })]
+        end
+      end
+      client.send_direct_message("uuid-bob", "hi", content_type: "text/plain", idempotency_key: "my-key")
     end
 
     def test_auth_error_refreshes_credential_and_retries_once

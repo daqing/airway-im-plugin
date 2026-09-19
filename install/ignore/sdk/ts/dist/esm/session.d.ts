@@ -81,6 +81,7 @@ export declare class AirwayIM {
         title?: string;
     }): Promise<Conversation>;
     createDirect(otherUserUuid: string): Promise<Conversation>;
+    getDirectConversation(otherUserUuid: string): Promise<Conversation | null>;
     createGroup(title: string | null, memberUuids: string[]): Promise<Conversation>;
     getConversation(uuid: string): Promise<ConversationDetails>;
     addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails>;

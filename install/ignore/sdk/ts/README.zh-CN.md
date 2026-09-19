@@ -94,6 +94,8 @@ const history = await im.history(id);   // 返回按 sequence 升序的全部消
 
 // 发送（SDK 自动生成 Idempotency-Key，网络失败自动用同一 key 重试，不会重发）
 const sent = await im.sendMessage(id, "你好", { contentType: "text/plain" });
+// 或一步到位：get-or-create 单聊会话后直接发送
+await im.sendDirectMessage(otherUserUuid, "你好");
 ```
 
 ### 3. 页面生命周期建议
@@ -132,6 +134,7 @@ App({
 | `im.listGroups()` | `GET /api/v1/conversations?type=group` |
 | `im.createConversation({kind, memberUuids, title?})` | `POST /api/v1/conversations` |
 | `im.createDirect(otherUserUuid)` | 同上（direct get-or-create） |
+| `im.getDirectConversation(otherUserUuid)` | `GET /api/v1/conversations/direct/:user_uuid`（没有则返回 null） |
 | `im.createGroup(title, memberUuids)` | `POST /api/v1/group` |
 | `im.getConversation(uuid)` | `GET /api/v1/conversations/:uuid` |
 | `im.addMembers(conversationId, memberUuids)` | `POST .../members` |
@@ -139,6 +142,7 @@ App({
 | `im.history(conversationId, {fromSequence?, limit?})` | 拉历史 + 开始跟踪同步 |
 | `im.listMessages(conversationId, {afterSequence?, limit?})` | `GET .../messages`（原始分页） |
 | `im.sendMessage(conversationId, content, opts?)` | `POST /api/v1/messages` |
+| `im.sendDirectMessage(otherUserUuid, content, opts?)` | Get-or-create 单聊会话后走 `POST /api/v1/messages` |
 | `im.uploadFile(filePath \| File, dir?)` | `POST /api/v1/storage` |
 | `im.storageUrl(key)` | 文件下载地址（配 `<image>` / `wx.downloadFile`） |
 

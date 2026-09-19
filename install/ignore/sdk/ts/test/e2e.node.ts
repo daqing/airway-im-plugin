@@ -144,6 +144,11 @@ async function main(): Promise<void> {
   ok("direct get-or-create", direct.kind === "direct" && direct.id.length === 26);
   await bob.history(direct.id); // track the conversation before traffic flows
 
+  const resolved = await alice.getDirectConversation(bobMe.uuid);
+  ok("getDirectConversation resolves the existing conversation", resolved?.id === direct.id);
+  const missing = await carol.getDirectConversation(bobMe.uuid);
+  ok("getDirectConversation returns null when absent", missing === null);
+
   const sent = await alice.sendMessage(direct.id, "hello **bob**", {
     contentType: "text/markdown",
   });

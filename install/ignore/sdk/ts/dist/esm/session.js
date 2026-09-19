@@ -179,6 +179,9 @@ export class AirwayIM {
     createDirect(otherUserUuid) {
         return this.rest.createDirect(otherUserUuid);
     }
+    getDirectConversation(otherUserUuid) {
+        return this.rest.getDirectConversation(otherUserUuid);
+    }
     createGroup(title, memberUuids) {
         return this.rest.createGroup(title, memberUuids);
     }

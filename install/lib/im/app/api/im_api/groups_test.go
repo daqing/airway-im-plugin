@@ -389,6 +389,89 @@ func TestGetConversationRejectsUnavailableConversation(t *testing.T) {
 	}
 }
 
+func TestGetDirectConversationReturnsExistingConversation(t *testing.T) {
+	router := setupGroupTestRouter(t)
+	db := repo.CurrentDB()
+	conversationUUID := "01J2Q7D4N5R8TK6VD3SZ1H0Y6M"
+	statements := []string{
+		`INSERT INTO conversations (id, kind, created_by, next_sequence, created_at, updated_at)
+		 VALUES ('01J2Q7D4N5R8TK6VD3SZ1H0Y6M', 'direct', 1, 1, '2026-07-24 00:00:00', '2026-07-24 00:00:00')`,
+		`INSERT INTO conversation_members (conversation_id, user_id, role, joined_at)
+		 VALUES ('01J2Q7D4N5R8TK6VD3SZ1H0Y6M', 1, 'member', '2026-07-24 00:00:00')`,
+		`INSERT INTO conversation_members (conversation_id, user_id, role, joined_at)
+		 VALUES ('01J2Q7D4N5R8TK6VD3SZ1H0Y6M', 2, 'member', '2026-07-24 00:00:00')`,
+		`INSERT INTO direct_conversations (conversation_id, user_id_low, user_id_high)
+		 VALUES ('01J2Q7D4N5R8TK6VD3SZ1H0Y6M', 1, 2)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("seed direct conversation: %v", err)
+		}
+	}
+
+	tests := []struct {
+		name       string
+		viewerUUID string
+		viewerName string
+		peerUUID   string
+	}{
+		{name: "owner resolves peer alice", viewerUUID: "uuid-owner", viewerName: "owner", peerUUID: "uuid-alice"},
+		{name: "alice resolves peer owner", viewerUUID: "uuid-alice", viewerName: "alice", peerUUID: "uuid-owner"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			credential, err := auth.MintCredential(groupTestSecret, test.viewerUUID, test.viewerName, "", "", time.Hour)
+			if err != nil {
+				t.Fatalf("mint credential: %v", err)
+			}
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/direct/"+test.peerUUID, nil)
+			request.Header.Set("Authorization", "Bearer "+credential)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			var body struct {
+				Code int                  `json:"code"`
+				Data conversationResponse `json:"data"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if body.Code != 0 || body.Data.ID != conversationUUID || body.Data.Kind != "direct" {
+				t.Fatalf("unexpected conversation: %#v", body)
+			}
+		})
+	}
+}
+
+func TestGetDirectConversationReturnsNotFoundWhenAbsent(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "no conversation with peer", path: "/api/v1/conversations/direct/uuid-bob"},
+		{name: "unknown peer uuid", path: "/api/v1/conversations/direct/uuid-nobody"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			router := setupGroupTestRouter(t)
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			request.Header.Set("Authorization", "Bearer "+groupOwnerCredential(t))
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), `"code":11001`) {
+				t.Fatalf("expected code 11001, body = %s", response.Body.String())
+			}
+		})
+	}
+}
+
 func TestCreateConversationMessage(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	db := repo.CurrentDB()

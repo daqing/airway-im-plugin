@@ -92,6 +92,42 @@ func GetConversation(c *gin.Context) {
 	})
 }
 
+// GetDirectConversation resolves the authenticated user's direct conversation
+// with one peer by uuid, read-only: 404 when the peer is unknown or no direct
+// conversation exists yet (unlike POST /conversations, which get-or-creates).
+func GetDirectConversation(c *gin.Context) {
+	user, ok := currentUser(c)
+	if !ok {
+		return
+	}
+	peerUUID := strings.TrimSpace(c.Param("user_uuid"))
+	if peerUUID == "" {
+		respondError(c, http.StatusBadRequest, 10003, "Invalid user UUID")
+		return
+	}
+
+	db := repo.CurrentDB()
+	peer, err := resolveUsers(db, map[string]struct{}{peerUUID: {}})
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load user")
+		return
+	}
+	if len(peer) != 1 {
+		respondError(c, http.StatusNotFound, 11001, "Conversation not found")
+		return
+	}
+	existing, err := findDirect(db, user.ID, peer[0].ID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load conversation")
+		return
+	}
+	if existing == nil {
+		respondError(c, http.StatusNotFound, 11001, "Conversation not found")
+		return
+	}
+	respond(c, http.StatusOK, existing)
+}
+
 func ListConversations(c *gin.Context) {
 	user, ok := currentUser(c)
 	if !ok {

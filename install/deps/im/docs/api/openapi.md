@@ -179,6 +179,47 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/conversations/direct/{user_uuid}:
+    get:
+      tags: [Conversations]
+      operationId: getDirectConversation
+      summary: Resolve the direct conversation with one user
+      description: >-
+        Read-only lookup of the authenticated user's direct conversation with
+        one peer by their stable uuid. Unlike the direct kind of
+        POST /api/v1/conversations, this never creates a conversation: a 404
+        means no direct conversation exists yet (or the peer uuid is unknown).
+        Clients resolve the conversation ID here once and then poll
+        GET /api/v1/conversations/{conversation_uuid}/messages for history.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_uuid
+          in: path
+          required: true
+          description: Stable uuid of the other user.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+      responses:
+        '200':
+          description: The existing direct conversation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationEnvelope'
+        '404':
+          description: >-
+            No direct conversation exists between the authenticated user and
+            that peer uuid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/group:
     post:
       tags: [Conversations]

@@ -77,12 +77,14 @@ im = AirwayIM::Client.new(
 
 im.me                                     # 当前用户资料
 conversation = im.create_direct("user-2") # 与 uuid 为 user-2 的用户单聊（get-or-create）
+im.direct_conversation("user-2")          # 与 user-2 的已有单聊会话，没有则返回 nil（只读）
 im.create_group(member_uuids: ["user-2", "user-3"], title: "Backend Team")
 im.list_groups                            # 我加入的群列表
 im.conversation(conversation["id"])       # 会话类型 + 成员及角色
 
 # 发送消息：自动生成 Idempotency-Key，网络失败自动用同一 key 重试，不会重发
 im.send_message(conversation["id"], "你好", content_type: "text/plain")
+im.send_direct_message("user-2", "你好") # 一步到位：get-or-create 单聊会话后直接发送
 
 # 历史 / 序列同步（掉线后从上次游标补齐，升序返回）
 im.messages(conversation["id"], after_sequence: 42, limit: 100)
@@ -105,6 +107,7 @@ im.storage_url("avatars/202609/xxx.png")                # 下载地址
 | `list_groups` | `GET /api/v1/conversations?type=group` |
 | `create_conversation(kind:, member_uuids:, title: nil)` | `POST /api/v1/conversations` |
 | `create_direct(other_uuid)` | 同上（direct get-or-create） |
+| `direct_conversation(other_uuid)` | `GET /api/v1/conversations/direct/:user_uuid`（没有则返回 nil） |
 | `create_group(member_uuids:, title: nil)` | `POST /api/v1/group` |
 | `conversation(uuid)` | `GET /api/v1/conversations/:uuid` |
 | `add_members(uuid, member_uuids)` | `POST .../members`（owner/admin，幂等） |
@@ -112,7 +115,7 @@ im.storage_url("avatars/202609/xxx.png")                # 下载地址
 | `messages(uuid, after_sequence: nil, limit: nil)` | `GET .../messages`（原始分页，limit 1–200） |
 | `each_message(uuid, after_sequence: 0, page_size: 100)` | 自动翻页的 Enumerator，升序遍历历史 |
 | `send_message(conversation_id, content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
-| `send_message_to(uuid, content, …)` | `POST /api/v1/conversations/:uuid/messages` |
+| `send_direct_message(other_uuid, content, …)` | Get-or-create 单聊会话后走 `POST /api/v1/messages` |
 | `upload_file(path 或 IO, filename:, dir:)` | `POST /api/v1/storage`（multipart） |
 | `storage_url(key)` | 文件下载地址 |
 

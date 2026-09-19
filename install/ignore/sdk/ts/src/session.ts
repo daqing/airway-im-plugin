@@ -270,6 +270,10 @@ export class AirwayIM {
     return this.rest.createDirect(otherUserUuid);
   }
 
+  getDirectConversation(otherUserUuid: string): Promise<Conversation | null> {
+    return this.rest.getDirectConversation(otherUserUuid);
+  }
+
   createGroup(title: string | null, memberUuids: string[]): Promise<Conversation> {
     return this.rest.createGroup(title, memberUuids);
   }

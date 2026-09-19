@@ -117,6 +117,8 @@ const history = await im.history(id);   // all messages, ascending sequence
 // Sending (the SDK generates the Idempotency-Key automatically and retries
 // network failures with the same key, so a message is never duplicated)
 const sent = await im.sendMessage(id, "你好", { contentType: "text/plain" });
+// or in one call: get-or-create the direct conversation, then send
+await im.sendDirectMessage(otherUserUuid, "你好");
 ```
 
 ### 3. Page lifecycle recommendations
@@ -157,6 +159,7 @@ App({
 | `im.listGroups()` | `GET /api/v1/conversations?type=group` |
 | `im.createConversation({kind, memberUuids, title?})` | `POST /api/v1/conversations` |
 | `im.createDirect(otherUserUuid)` | Same (direct get-or-create) |
+| `im.getDirectConversation(otherUserUuid)` | `GET /api/v1/conversations/direct/:user_uuid` (null when none) |
 | `im.createGroup(title, memberUuids)` | `POST /api/v1/group` |
 | `im.getConversation(uuid)` | `GET /api/v1/conversations/:uuid` |
 | `im.addMembers(conversationId, memberUuids)` | `POST .../members` |
@@ -164,6 +167,7 @@ App({
 | `im.history(conversationId, {fromSequence?, limit?})` | Pull history + start tracking sync |
 | `im.listMessages(conversationId, {afterSequence?, limit?})` | `GET .../messages` (raw paging) |
 | `im.sendMessage(conversationId, content, opts?)` | `POST /api/v1/messages` |
+| `im.sendDirectMessage(otherUserUuid, content, opts?)` | Get-or-create the direct conversation, then `POST /api/v1/messages` |
 | `im.uploadFile(filePath \| File, dir?)` | `POST /api/v1/storage` |
 | `im.storageUrl(key)` | File download URL (for `<image>` / `wx.downloadFile`) |
 

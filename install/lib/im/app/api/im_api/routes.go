@@ -6,6 +6,7 @@ func Routes(r *gin.RouterGroup) {
 	r.POST("/group", CreateGroup)
 	r.GET("/conversations", ListConversations)
 	r.POST("/conversations", CreateConversation)
+	r.GET("/conversations/direct/:user_uuid", GetDirectConversation)
 	r.GET("/conversations/:conversation_uuid", GetConversation)
 	r.POST("/conversations/:conversation_uuid/members", AddMembers)
 	r.DELETE("/conversations/:conversation_uuid/members/:user_uuid", RemoveMember)

@@ -68,6 +68,18 @@ module AirwayIM
       create_conversation(kind: "direct", member_uuids: [other_uuid])
     end
 
+    # The direct conversation with one other user, identified by their uuid.
+    # Read-only: returns nil when none exists yet (create_direct get-or-creates
+    # instead). Combine with messages/each_message to poll and display the
+    # history with that user.
+    def direct_conversation(other_uuid)
+      get("/api/v1/conversations/direct/#{Util.escape_segment(other_uuid)}")
+    rescue Error => e
+      raise unless e.code == 11001
+
+      nil
+    end
+
     # Create a new group; the authenticated user becomes its owner.
     def create_group(member_uuids:, title: nil)
       body = { member_uuids: member_uuids }
@@ -132,11 +144,13 @@ module AirwayIM
       post_message("/api/v1/messages", body, idempotency_key: idempotency_key, retries: retries)
     end
 
-    # Nested send variant; same semantics as send_message.
-    def send_message_to(uuid, content, content_type: DEFAULT_CONTENT_TYPE, idempotency_key: nil, retries: 1)
-      body = { content: content, content_type: content_type }
-      post_message("/api/v1/conversations/#{Util.escape_segment(uuid)}/messages",
-                   body, idempotency_key: idempotency_key, retries: retries)
+    # Send a direct message to one other user, identified by their uuid:
+    # get-or-create the direct conversation, then send. Same idempotency
+    # semantics as send_message.
+    def send_direct_message(other_uuid, content, content_type: DEFAULT_CONTENT_TYPE, idempotency_key: nil, retries: 1)
+      conversation = create_direct(other_uuid)
+      send_message(conversation.fetch("id"), content,
+                   content_type: content_type, idempotency_key: idempotency_key, retries: retries)
     end
 
     # ---- Storage ----

@@ -101,6 +101,21 @@ export class IMHttpClient {
     createDirect(otherUserUuid) {
         return this.createConversation({ kind: "direct", memberUuids: [otherUserUuid] });
     }
+    /**
+     * The direct conversation with one other user by uuid, or null when none
+     * exists yet (read-only; createDirect get-or-creates instead). Combine with
+     * listMessages to poll and display the history with that user.
+     */
+    async getDirectConversation(otherUserUuid) {
+        try {
+            return await this.request("GET", `/api/v1/conversations/direct/${encodeURIComponent(otherUserUuid)}`);
+        }
+        catch (err) {
+            if (err instanceof IMError && err.code === ErrorCode.ConversationNotFound)
+                return null;
+            throw err;
+        }
+    }
     /** Create a new group; the authenticated user becomes its owner. */
     createGroup(title, memberUuids) {
         return this.request("POST", "/api/v1/group", {
@@ -140,12 +155,14 @@ export class IMHttpClient {
             content_type: options.contentType ?? "text/markdown",
         }, options);
     }
-    /** Nested send variant; same semantics as sendMessage. */
-    sendMessageTo(conversationId, content, options = {}) {
-        return this.postMessage(`/api/v1/conversations/${encodeURIComponent(conversationId)}/messages`, {
-            content,
-            content_type: options.contentType ?? "text/markdown",
-        }, options);
+    /**
+     * Send a direct message to one other user, identified by their uuid:
+     * get-or-create the direct conversation, then send. Same idempotency
+     * semantics as sendMessage.
+     */
+    async sendDirectMessage(otherUserUuid, content, options = {}) {
+        const conversation = await this.createDirect(otherUserUuid);
+        return this.sendMessage(conversation.id, content, options);
     }
     async postMessage(path, body, options) {
         const key = options.idempotencyKey ?? randomId();

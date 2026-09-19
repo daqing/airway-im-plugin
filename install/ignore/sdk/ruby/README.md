@@ -87,6 +87,7 @@ im = AirwayIM::Client.new(
 
 im.me                                     # current user profile
 conversation = im.create_direct("user-2") # direct conversation with the user whose uuid is "user-2" (get-or-create)
+im.direct_conversation("user-2")          # the existing direct conversation with "user-2", or nil (read-only)
 im.create_group(member_uuids: ["user-2", "user-3"], title: "Backend Team")
 im.list_groups                            # groups I belong to
 im.conversation(conversation["id"])       # conversation kind + members with roles
@@ -94,6 +95,7 @@ im.conversation(conversation["id"])       # conversation kind + members with rol
 # Send a message: the Idempotency-Key is generated automatically and reused
 # across network-failure retries, so a message is never duplicated
 im.send_message(conversation["id"], "你好", content_type: "text/plain")
+im.send_direct_message("user-2", "你好") # one call: get-or-create the direct conversation, then send
 
 # History / sequence sync (catch up from the last cursor after going offline,
 # returned in ascending order)
@@ -118,6 +120,7 @@ it to create conversations and send messages.
 | `list_groups` | `GET /api/v1/conversations?type=group` |
 | `create_conversation(kind:, member_uuids:, title: nil)` | `POST /api/v1/conversations` |
 | `create_direct(other_uuid)` | Same (direct get-or-create) |
+| `direct_conversation(other_uuid)` | `GET /api/v1/conversations/direct/:user_uuid` (nil when none) |
 | `create_group(member_uuids:, title: nil)` | `POST /api/v1/group` |
 | `conversation(uuid)` | `GET /api/v1/conversations/:uuid` |
 | `add_members(uuid, member_uuids)` | `POST .../members` (owner/admin, idempotent) |
@@ -125,7 +128,7 @@ it to create conversations and send messages.
 | `messages(uuid, after_sequence: nil, limit: nil)` | `GET .../messages` (raw paging, limit 1–200) |
 | `each_message(uuid, after_sequence: 0, page_size: 100)` | Auto-paging Enumerator over the history, ascending |
 | `send_message(conversation_id, content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
-| `send_message_to(uuid, content, …)` | `POST /api/v1/conversations/:uuid/messages` |
+| `send_direct_message(other_uuid, content, …)` | Get-or-create the direct conversation, then `POST /api/v1/messages` |
 | `upload_file(path or IO, filename:, dir:)` | `POST /api/v1/storage` (multipart) |
 | `storage_url(key)` | File download URL |
 

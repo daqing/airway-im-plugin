@@ -44,6 +44,12 @@ export declare class IMHttpClient {
     }): Promise<Conversation>;
     /** Get-or-create a direct conversation with one other user, by uuid. */
     createDirect(otherUserUuid: string): Promise<Conversation>;
+    /**
+     * The direct conversation with one other user by uuid, or null when none
+     * exists yet (read-only; createDirect get-or-creates instead). Combine with
+     * listMessages to poll and display the history with that user.
+     */
+    getDirectConversation(otherUserUuid: string): Promise<Conversation | null>;
     /** Create a new group; the authenticated user becomes its owner. */
     createGroup(title: string | null, memberUuids: string[]): Promise<Conversation>;
     getConversation(uuid: string): Promise<ConversationDetails>;
@@ -59,8 +65,12 @@ export declare class IMHttpClient {
      * never duplicate a message; pass options.idempotencyKey to control it.
      */
     sendMessage(conversationId: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
-    /** Nested send variant; same semantics as sendMessage. */
-    sendMessageTo(conversationId: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
+    /**
+     * Send a direct message to one other user, identified by their uuid:
+     * get-or-create the direct conversation, then send. Same idempotency
+     * semantics as sendMessage.
+     */
+    sendDirectMessage(otherUserUuid: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
     private postMessage;
     /**
      * Upload a file (development-stage API: currently no auth middleware).
