@@ -23,7 +23,7 @@ session tokens and user credentials are different credential types and cannot
 be substituted for one another.
 
 The plugin ships no user login flow. Users register automatically the first
-time a host-signed credential authenticates (see
+time an Airway-signed credential authenticates (see
 [`../design/identity.md`](../design/identity.md)); `GET /admin/api/users`
 lists those registered identities for operational visibility.
 
@@ -35,6 +35,6 @@ kicks their live Gateway connections via `IM_GATEWAY_URL`:
 {"code": 0, "data": {"uuid": "user-42", "token_version": 2, "connections_kicked": 1}, "message": null}
 ```
 
-An unknown `uuid` returns 404. Revocation is not a ban: the host can mint a
-fresh credential at any time; to keep a user out, the host must stop minting
+An unknown `uuid` returns 404. Revocation is not a ban: the Airway project can mint a
+fresh credential at any time; to keep a user out, the Airway project must stop minting
 for them.

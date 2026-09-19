@@ -1,14 +1,14 @@
 # airway-im-plugin
 
 An [Airway](https://github.com/daqing/airway) plugin that packages a
-complete IM chat backend: host-signed credential identity, direct
+complete IM chat backend: Airway-signed credential identity, direct
 and group conversations, durable messaging with sequence-based
 synchronization, an admin API with content moderation, a WebSocket gateway,
 and a transactional-outbox delivery worker. The companion WebSocket gateway
 and delivery services ship under [`install/deps/`](install/deps/), so the whole stack can run
 standalone from any Airway host app that enables the plugin.
 
-The plugin authenticates users through host-signed HMAC credentials: the host
+The plugin authenticates users through Airway-signed HMAC credentials: the host
 application signs its `(name, uuid)` identity pair, and the plugin verifies
 it statelessly.
 A Chinese version of this document is available at
@@ -61,7 +61,7 @@ API. Delivery is at-least-once; clients deduplicate by `message_id` /
 
 Design contracts:
 
-- [`install/deps/im/docs/design/identity.md`](install/deps/im/docs/design/identity.md) — host-signed
+- [`install/deps/im/docs/design/identity.md`](install/deps/im/docs/design/identity.md) — Airway-signed
   credential format, minting, client usage, rotation and revocation
 - [`install/deps/im/docs/design/gateway.md`](install/deps/im/docs/design/gateway.md) — wire protocol,
   connection lifecycle, limits, security model
@@ -74,13 +74,28 @@ Design contracts:
 
 **Identity**
 
-- The plugin ships no login flow: a host application signs its users'
-  `(name, uuid)` pair into an HMAC-SHA256 credential with a shared secret
-  (`IM_AUTH_SECRET`), and the plugin verifies it statelessly.
+- The plugin ships no login flow: identity is an HMAC-SHA256 credential
+  signed with a shared secret (`IM_AUTH_SECRET`) that the plugin
+  verifies statelessly. The signing secret never leaves the server side
+  — it is held by no client and exposed by no public API. When the
+  Airway project (an independently deployed Go microservice) resells IM
+  to third-party platforms, their PHP/Java backends mint credentials
+  server-to-server through the internal minting API and never need the
+  signing secret; backends the operator fully trusts may also sign
+  locally in any language.
+- Clients provide no identity data and hold no secret: a user logs in
+  through their own platform's existing login (password, SMS,
+  `wx.login`, …), that platform's backend reads `(name, uuid)` from its
+  own user table and obtains the credential from the Airway project's minting API
+  (or signs it locally), and the finished credential is returned in the
+  login response; the client only carries and presents it. The public
+  API never issues credentials — it only verifies — and the minting
+  endpoint is internal-only and secret protected. A platform without a
+  server backend (a pure front-end client) cannot integrate securely.
 - A generic `users` table (uuid, username, nickname, avatar URL, email,
   last-seen) is the identity source of truth for all IM APIs; rows are
   auto-registered the first time a valid credential authenticates.
-- Hosts may sign credentials themselves (any language, no extra dependency)
+- Airway projects may sign credentials themselves (any language, no extra dependency)
   or call `POST /internal/v1/credentials` to have the backend mint them.
 - `GET /api/v1/me` profile lookup by credential; credentials are never
   exposed in API responses, delivery events, or logs.
@@ -140,9 +155,9 @@ Design contracts:
 **Airway integration**
 
 - Go DSL migrations under `db/migrate` register on init when the plugin is
-  enabled and run through the host binary's own `db:migrate`; SQLite, MySQL,
+  enabled and run through the Airway binary's own `db:migrate`; SQLite, MySQL,
   and PostgreSQL are supported via the framework's schema compiler.
-- REPL models (`User`) are exposed to the host REPL through the plugin
+- REPL models (`User`) are exposed to the Airway REPL through the plugin
   contract; the file-storage API is available as in any Airway app.
 
 ## Repository layout
@@ -150,8 +165,8 @@ Design contracts:
 | Path | Role | Default port |
 | --- | --- | --- |
 | repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin (package `implugin`): IM API, admin API, internal API, migrations, REPL models | — |
-| [`install/deps/im/gateway/`](install/deps/im/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
-| [`install/deps/im/delivery/`](install/deps/im/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
+| [`install/deps/im/gateway/`](install/deps/im/gateway/) | Standalone Go module (shipped to Airway projects via `plugin:install`): WebSocket gateway | 1910 |
+| [`install/deps/im/delivery/`](install/deps/im/delivery/) | Standalone Go module (shipped to Airway projects via `plugin:install`): transactional-outbox publisher | 1920 |
 | [`install/ignore/client/`](install/ignore/client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
 | [`install/ignore/sdk/ts/`](install/ignore/sdk/ts/) | JavaScript/TypeScript SDK (npm package `airway-im-sdk-ts`): typed REST client, realtime gateway, and sequence-based sync engine, with built-in WeChat Mini Program and browser adapters | — |
 | [`install/deps/im/docs/`](install/deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
@@ -178,7 +193,7 @@ gateway/delivery (each ships a `Containerfile`).
 
 ### Using as a plugin
 
-Enable the plugin in any Airway host application — either with the host's
+Enable the plugin in any Airway application — either with the Airway project's
 installer or by hand:
 
 ```bash
@@ -187,23 +202,23 @@ go run . plugin:install github.com/daqing/airway-im-plugin   # in the host app
 
 A local checkout can be installed with a `replace` directive pointing at this
 directory instead. Enabling adds a blank import
-`_ "github.com/daqing/airway-im-plugin"` to the host's `plugins.go`; on
+`_ "github.com/daqing/airway-im-plugin"` to the Airway project's `plugins.go`; on
 import the plugin registers its routes (`/api/v1/...`, `/admin/api`), its Go
 DSL migrations, and the `User` REPL model. The internal API (`/internal/v1`)
-is served separately: when the host boots, the plugin starts a dedicated
+is served separately: when the Airway project boots, the plugin starts a dedicated
 listener for it (`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`).
-`plugin:install` also copies the plugin's `install/deps/` tree into the host's own
+`plugin:install` also copies the plugin's `install/deps/` tree into the Airway project's own
 `deps/` directory — that is how the `gateway/` and `delivery/` companion
 services arrive at `deps/im/gateway` and `deps/im/delivery` (their
 `go.mod.templ` files are installed as `go.mod`; existing files are
-never overwritten). Run the host's `db:migrate` to create the IM tables, and
+never overwritten). Run the Airway project's `db:migrate` to create the IM tables, and
 set `IM_AUTH_SECRET` (plus `IM_INTERNAL_SECRET` for the realtime path) in the
-host's environment.
+Airway project's environment.
 
 ### Running standalone
 
 Any Airway host app with the plugin enabled is a complete IM backend. To run
-the whole stack on its own, scaffold a fresh host, install the plugin, and
+the whole stack on its own, scaffold a fresh Airway project, install the plugin, and
 start the three services:
 
 ```bash
@@ -219,11 +234,11 @@ go run . server       # start the backend on :1905
 ```
 
 The IM migrations are Go DSL changes under `db/migrate/`; they register on
-init through the plugin package and therefore run through the host binary
+init through the plugin package and therefore run through the Airway binary
 (`go run . db:migrate`), not the standalone `airway` CLI.
 
 Then start the companion services from the `deps/` tree that
-`plugin:install` copied into the host (all three must share
+`plugin:install` copied into the Airway project (all three must share
 `IM_INTERNAL_SECRET`):
 
 ```bash
@@ -237,16 +252,16 @@ Then start the companion services from the `deps/` tree that
 companion services only call `/internal/v1/*`.
 
 Or run the whole stack with Docker: `plugin:install` drops a
-`docker-compose.yml` at the host root that builds the backend and pulls in
+`docker-compose.yml` at the Airway project root that builds the backend and pulls in
 the plugin's `deps/im/docker-compose.yml` (gateway + delivery) via Compose's
-`include`, so `docker compose up --build` starts everything. If the host
+`include`, so `docker compose up --build` starts everything. If the Airway project
 already has its own `docker-compose.yml`, the install skips it — add
 `include: [deps/im/docker-compose.yml]` to your file instead, and make sure
 your app service is named `backend` with a healthcheck.
 
 The companion services ship their module files as `go.mod.templ` (Go module
 zips drop nested `go.mod` files); `plugin:install` materializes them as
-`go.mod` in the host. To hack on this repository itself, point the host's
+`go.mod` in the Airway project. To hack on this repository itself, point the Airway project's
 `go.mod` at the local checkout with a `replace` directive, and run
 `just deps-setup` once here to materialize `install/deps/*/go.mod` for direct
 `go run`.
@@ -256,7 +271,7 @@ zips drop nested `go.mod` files); `plugin:install` materializes them as
 Earlier plugin versions served the internal API (`/internal/v1/*`) on the
 public port; it now lives on its own listener (`IM_INTERNAL_ADDR`, default
 `127.0.0.1:1906`) and the public port answers 404 for it. After bumping the
-plugin dependency in the host's `go.mod`:
+plugin dependency in the Airway project's `go.mod`:
 
 - **Point `BACKEND_URL` of gateway and delivery at the internal listener**
   (e.g. `http://127.0.0.1:1906`). The shipped defaults already do; only
@@ -270,10 +285,10 @@ Clients, the admin API, and the WebSocket wire protocol are unaffected.
 
 ## Authenticating users
 
-Users are identified by the host application's `(name, uuid)` pair, signed
+Users are identified by the Airway application's `(name, uuid)` pair, signed
 into an HMAC credential. A user is auto-registered in the `users` table the
 first time a valid credential is presented — there is no separate
-provisioning step. The full format, host-side signing examples (Go,
+provisioning step. The full format, Airway-side signing examples (Go,
 Node.js, Python), and rotation rules are in
 [`install/deps/im/docs/design/identity.md`](install/deps/im/docs/design/identity.md).
 
@@ -366,7 +381,7 @@ credential as the **first** application message:
 - Failure/timeout: an error envelope, then close code `1008`. Reconnect with
   backoff, then catch up via `after_sequence` — never rely on the socket for
   missed messages. If the credential has expired, fetch a fresh one from the
-  host backend before reconnecting.
+  Airway backend before reconnecting.
 - `{"cmd":"ping"}` answers `{"code":0,"data":"PONG"}`; protocol-level
   ping/pong runs automatically every 30 seconds.
 
@@ -387,7 +402,7 @@ built-in adapters for WeChat Mini Programs and browsers.
 | `PORT` | backend | `1905` | HTTP listen port |
 | `URL_PREFIX` | backend | — | Optional sub-path prefix behind a proxy |
 | `STORAGE_DRIVER` / `STORAGE_*` | backend | `local` | File storage (see `.env.example`) |
-| `IM_AUTH_SECRET` | backend, host | — | HMAC credential signing secret; **required** for authentication |
+| `IM_AUTH_SECRET` | backend, Airway project | — | HMAC credential signing secret; **required** for authentication |
 | `IM_AUTH_SECRET_PREVIOUS` | backend | — | Previous signing secret accepted during rotation (optional) |
 | `IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD` | backend | — | Admin console credentials |
 | `IM_GATEWAY_URL` | backend | `http://127.0.0.1:1910` | Gateway base URL for admin online-status and revocation kicks |

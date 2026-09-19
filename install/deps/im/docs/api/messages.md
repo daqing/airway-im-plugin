@@ -26,7 +26,7 @@ The endpoint is available only over HTTPS outside local development.
 
 ### Authentication
 
-Send the host-signed user credential in the standard `Authorization` header
+Send the Airway-signed user credential in the standard `Authorization` header
 (see [`../design/identity.md`](../design/identity.md)):
 
 ```text
@@ -41,7 +41,7 @@ rejected.
 
 | Header | Required | Description |
 | --- | --- | --- |
-| `Authorization` | yes | Airway IM host-signed credential; see [`../design/identity.md`](../design/identity.md). |
+| `Authorization` | yes | Airway IM Airway-signed credential; see [`../design/identity.md`](../design/identity.md). |
 | `Content-Type` | yes | Must be `application/json`. UTF-8 is assumed. |
 | `Idempotency-Key` | recommended | A unique, client-generated value for safely retrying one logical send operation. UUIDv7 is recommended. |
 

@@ -1,8 +1,8 @@
 # airway-im-plugin（中文文档）
 
-一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：宿主签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。下分发，在任何启用本插件的 Airway 宿主应用中即可独立跑起整套服务。配套的 gateway 与 delivery 服务随插件一起在 [`deps/`](../../) 下分发，在任何启用本插件的 Airway 宿主应用中即可独立跑起整套服务。
+一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：Airway 项目签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。下分发，在任何启用本插件的 Airway 应用中即可独立跑起整套服务。配套的 gateway 与 delivery 服务随插件一起在 [`deps/`](../../) 下分发，在任何启用本插件的 Airway 应用中即可独立跑起整套服务。
 
-插件通过宿主签名的 HMAC 凭证认证用户：宿主应用对自己的 `(name, uuid)` 身份二元组
+插件通过 Airway 项目签名的 HMAC 凭证认证用户：Airway 应用对自己的 `(name, uuid)` 身份二元组
 签名，插件无状态验签。英文版文档位于仓库根目录的 [`README.md`](../../../README.md)。
 
 ## 目录
@@ -48,7 +48,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 设计契约文档：
 
-- [`deps/im/docs/design/identity.md`](design/identity.md) —— 宿主签名凭证格式、签发
+- [`deps/im/docs/design/identity.md`](design/identity.md) —— Airway 项目签名凭证格式、签发
   方式、客户端用法、轮换与撤销
 - [`deps/im/docs/design/gateway.md`](design/gateway.md) —— 通信协议、连接生命周期、
   限制与安全模型
@@ -61,11 +61,11 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 **身份**
 
-- 插件自身不带登录流程：宿主应用使用共享密钥（`IM_AUTH_SECRET`）将用户的
+- 插件自身不带登录流程：Airway 应用使用共享密钥（`IM_AUTH_SECRET`）将用户的
   `(name, uuid)` 二元组签名成 HMAC-SHA256 凭证，插件无状态验签。
 - 一张通用的 `users` 表（uuid、用户名、昵称、头像 URL、邮箱、最近活跃时间）
   是所有 IM API 的身份事实来源；用户行在凭证首次认证成功时自动注册。
-- 宿主可以自行签发凭证（任何语言均可实现，无额外依赖），也可以调用
+- Airway 项目可以自行签发凭证（任何语言均可实现，无额外依赖），也可以调用
   `POST /internal/v1/credentials` 由 backend 代为签发。
 - `GET /api/v1/me` 按凭证查询用户资料；凭证不会出现在任何 API 响应、投递
   事件或日志中。
@@ -119,10 +119,10 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 **Airway 集成**
 
-- `db/migrate` 下的 Go DSL 迁移在插件被启用时随 init 注册，通过宿主二进制
+- `db/migrate` 下的 Go DSL 迁移在插件被启用时随 init 注册，通过 Airway 项目二进制
   自身的 `db:migrate` 执行；借助框架的 schema 编译器支持 SQLite、MySQL 与
   PostgreSQL。
-- REPL 模型（`User`）通过插件契约暴露给宿主 REPL；文件存储 API 与任何
+- REPL 模型（`User`）通过插件契约暴露给 Airway 项目的 REPL；文件存储 API 与任何
   Airway 应用一样可用。
 
 ## 仓库结构
@@ -130,8 +130,8 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | 路径 | 角色 | 默认端口 |
 | --- | --- | --- |
 | 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API、内部 API、迁移、REPL 模型 | — |
-| [`deps/im/gateway/`](../gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：WebSocket 网关 | 1910 |
-| [`deps/im/delivery/`](../delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入宿主）：事务性 outbox 投递器 | 1920 |
+| [`deps/im/gateway/`](../gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入 Airway 项目）：WebSocket 网关 | 1910 |
+| [`deps/im/delivery/`](../delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入 Airway 项目）：事务性 outbox 投递器 | 1920 |
 | [`deps/im/docs/`](.) | 设计文档、API 指南、OpenAPI 契约、落地页（`index.html`）、中文文档 | — |
 | [`sdk/ts/`](../../../sdk/ts/) | JS/TS SDK（npm 包 `airway-im-sdk-ts`）：类型化 REST 客户端、实时网关、基于 sequence 的同步引擎，内置微信小程序与浏览器适配器 | — |
 
@@ -157,27 +157,27 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 ### 作为插件使用
 
-在任意 Airway 宿主应用中启用本插件 —— 用宿主的安装命令，或手动添加：
+在任意 Airway 应用中启用本插件 —— 用 Airway 的安装命令，或手动添加：
 
 ```bash
-go run . plugin:install github.com/daqing/airway-im-plugin   # 在宿主应用中执行
+go run . plugin:install github.com/daqing/airway-im-plugin   # 在 Airway 应用中执行
 ```
 
-本地目录安装可改用指向本仓库的 `replace` 指令。启用即向宿主的
+本地目录安装可改用指向本仓库的 `replace` 指令。启用即向 Airway 项目的
 `plugins.go` 添加 blank import `_ "github.com/daqing/airway-im-plugin"`；
 import 时插件注册其路由（`/api/v1/...`、`/admin/api`）、
 Go DSL 迁移和 `User` REPL 模型。内部 API（`/internal/v1`）单独提供：
-宿主启动时插件会为它启动专用 listener（`IM_INTERNAL_ADDR`，默认
+Airway 项目启动时插件会为它启动专用 listener（`IM_INTERNAL_ADDR`，默认
 `127.0.0.1:1906`）。`plugin:install` 还会把插件的 `deps/`
-目录原样复制进宿主自己的 `deps/` 目录 —— `gateway/`、`delivery/` 两个配套服务
-由此到达宿主的 `deps/im/gateway` 和 `deps/im/delivery`（它们的 `go.mod.templ`
-落地为 `go.mod`，已存在的文件不会被覆盖）。然后执行宿主的 `db:migrate` 创建 IM 表，
-并在宿主环境中设置 `IM_AUTH_SECRET`（实时链路还需 `IM_INTERNAL_SECRET`）。
+目录原样复制进 Airway 项目自己的 `deps/` 目录 —— `gateway/`、`delivery/` 两个配套服务
+由此到达 Airway 项目的 `deps/im/gateway` 和 `deps/im/delivery`（它们的 `go.mod.templ`
+落地为 `go.mod`，已存在的文件不会被覆盖）。然后执行 Airway 项目的 `db:migrate` 创建 IM 表，
+并在 Airway 项目环境中设置 `IM_AUTH_SECRET`（实时链路还需 `IM_INTERNAL_SECRET`）。
 
 ### 独立运行
 
-任何启用了本插件的 Airway 宿主应用都是完整的 IM backend。想单独跑起整套
-服务，只需脚手架一个新的宿主、安装插件、启动三个服务：
+任何启用了本插件的 Airway 应用都是完整的 IM backend。想单独跑起整套
+服务，只需脚手架一个新的 Airway 项目、安装插件、启动三个服务：
 
 ```bash
 go install github.com/daqing/airway@latest
@@ -192,9 +192,9 @@ go run . server       # 启动 backend，监听 :1905
 ```
 
 IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注册，因此必须通过
-**宿主二进制**执行（`go run . db:migrate`），独立的 `airway` CLI 看不到它们。
+**Airway 项目二进制**执行（`go run . db:migrate`），独立的 `airway` CLI 看不到它们。
 
-再从 `plugin:install` 复制进宿主的 `deps/` 目录启动两个配套服务（三个服务
+再从 `plugin:install` 复制进 Airway 项目的 `deps/` 目录启动两个配套服务（三个服务
 必须共享同一个 `IM_INTERNAL_SECRET`）：
 
 ```bash
@@ -206,24 +206,24 @@ IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注
 `BACKEND_URL` 指向 backend 的内部 API listener（`IM_INTERNAL_ADDR`，默认
 `127.0.0.1:1906`）而不是公开端口 —— 配套服务只调用 `/internal/v1/*`。
 
-也可以用 Docker 跑起整套服务：`plugin:install` 会在宿主根目录生成
+也可以用 Docker 跑起整套服务：`plugin:install` 会在 Airway 项目根目录生成
 `docker-compose.yml`，它构建 backend 并通过 Compose 的 `include` 引入插件的
 `deps/im/docker-compose.yml`（gateway + delivery），执行
-`docker compose up --build` 即可全部启动。如果宿主已有自己的
+`docker compose up --build` 即可全部启动。如果 Airway 项目已有自己的
 `docker-compose.yml`，安装会跳过 —— 改在你的文件里加
 `include: [deps/im/docker-compose.yml]`，并确保你的应用服务名为 `backend`
 且带 healthcheck。
 
 配套服务的模块文件以 `go.mod.templ` 形式随插件分发（Go module zip 会丢弃嵌套的
-`go.mod`），`plugin:install` 会在宿主中将其落地为 `go.mod`。想直接开发本仓库，
-用 `replace` 指令把宿主的 `go.mod` 指向本地检出，并在本仓库执行一次
+`go.mod`），`plugin:install` 会在 Airway 项目中将其落地为 `go.mod`。想直接开发本仓库，
+用 `replace` 指令把 Airway 项目的 `go.mod` 指向本地检出，并在本仓库执行一次
 `just deps-setup` 生成 `deps/*/go.mod`，即可直接 `go run`。
 
 ### 从旧版本插件升级
 
 旧版本插件把内部 API（`/internal/v1/*`）挂在公开端口上；现在它由独立
 listener 提供（`IM_INTERNAL_ADDR`，默认 `127.0.0.1:1906`），公开端口访问
-它会返回 404。在宿主 `go.mod` 中升级插件依赖后：
+它会返回 404。在 Airway 项目 `go.mod` 中升级插件依赖后：
 
 - **把 gateway 和 delivery 的 `BACKEND_URL` 指向内部 listener**（例如
   `http://127.0.0.1:1906`）。随插件分发的默认值已经指向新地址；只有显式
@@ -236,10 +236,34 @@ listener 提供（`IM_INTERNAL_ADDR`，默认 `127.0.0.1:1906`），公开端口
 
 ## 用户认证
 
-用户由宿主应用的 `(name, uuid)` 二元组标识，并签名成 HMAC 凭证。凭证首次
+用户由 Airway 应用的 `(name, uuid)` 二元组标识，并签名成 HMAC 凭证。凭证首次
 认证成功时，用户会自动注册到 `users` 表 —— 没有单独的"开户"步骤。完整的
-凭证格式、宿主侧签发示例（Go、Node.js、Python）与密钥轮换规则见
+凭证格式、Airway 侧签发示例（Go、Node.js、Python）与密钥轮换规则见
 [`deps/im/docs/design/identity.md`](design/identity.md)。
+
+部署拓扑里有四个角色：**第三方平台**（自己的前端：小程序或浏览器 JS；
+自己的后端：通常是 PHP 或 Java）、**Airway 项目**（`airway new` 创建的 Go
+应用，安装本插件后作为独立部署的微服务对外提供 IM 服务）、**本插件**
+（嵌在 Airway 项目里），以及**最终用户**。第三方平台的 PHP/Java 后端嵌入不了
+Go 代码，因此 Airway 项目以 API 方式对接平台后端，凭证签发发生在服务端之间：
+
+- 用户先在第三方平台完成自己的登录（账号密码、手机验证码、`wx.login` 等）
+  —— 这一步就是全系统的客户端身份认证，插件不参与。登录通过后，平台
+  后端从自己的用户表取出 `(name, uuid)`，调用 Airway 项目的内部签发接口
+  `POST /internal/v1/credentials`（携带 `IM_INTERNAL_SECRET`）以
+  server-to-server 方式获取凭证，再随自己的登录响应下发给前端。
+- 签名密钥 `IM_AUTH_SECRET` 只保存在 Airway 项目的 IM 服务端，第三方平台后端只需
+  `IM_INTERNAL_SECRET`。若 Airway 项目方明确交付 secret，平台后端也可用任意语言
+  本地签名（HMAC-SHA256 是标准能力，无需嵌入 Go 代码）。
+- IM 的公开 API（`:1905`）只验签、从不给客户端签发凭证；签发端点默认只
+  监听回环地址。第三方平台后端与 Airway 项目不在同一台机器时，两者必须
+  处在同一个内网（同 VPC / 机房，或 VPN、专线打通），由 Airway 项目方把
+  `IM_INTERNAL_ADDR` 绑定到内网网卡供其经内网地址调用，对客户端与公网
+  永远不可达。客户端没有 secret，只持有并出示签好的凭证
+  （REST 用 `Authorization: Bearer`，WebSocket 用首条 `auth` 命令）。
+- 因此**接入方必须有自己的服务器后端**——纯前端、无服务器的小程序无法
+  安全接入：客户端没有安全途径获取凭证，也没有地方存放
+  `IM_INTERNAL_SECRET`。
 
 本地开发时，最快捷的取凭证方式是内部 listener 上的 server-to-server 签发端点：
 
@@ -324,7 +348,7 @@ HTTP API 一览：
   `{"event":"message.created","message_id":…,"conversation_id":…,"sequence":…}`。
 - 失败/超时：返回错误信封后以关闭码 `1008` 断开。客户端应退避重连，
   然后通过 `after_sequence` 补拉消息 —— 切勿依赖 socket 恢复错过的消息。
-  若凭证已过期，重连前需先向宿主后端重新获取凭证。
+  若凭证已过期，重连前需先向 Airway 后端重新获取凭证。
 - `{"cmd":"ping"}` 返回 `{"code":0,"data":"PONG"}`；协议层 ping/pong
   每 30 秒自动运行。
 
@@ -343,7 +367,7 @@ HTTP API 一览：
 | `PORT` | backend | `1905` | HTTP 监听端口 |
 | `URL_PREFIX` | backend | — | 反向代理场景下的可选子路径前缀 |
 | `STORAGE_DRIVER` / `STORAGE_*` | backend | `local` | 文件存储（见 `.env.example`） |
-| `IM_AUTH_SECRET` | backend、宿主 | — | HMAC 凭证签名密钥；认证功能**必需** |
+| `IM_AUTH_SECRET` | backend、Airway 项目 | — | HMAC 凭证签名密钥；认证功能**必需** |
 | `IM_AUTH_SECRET_PREVIOUS` | backend | — | 轮换期间同时接受的旧签名密钥（可选） |
 | `IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD` | backend | — | 管理后台凭据 |
 | `IM_GATEWAY_URL` | backend | `http://127.0.0.1:1910` | 管理后台在线状态聚合与撤销踢连使用的 gateway 基础 URL |

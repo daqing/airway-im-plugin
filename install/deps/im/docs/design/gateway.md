@@ -14,7 +14,7 @@ described here.
 The Gateway is responsible for:
 
 - accepting secure WebSocket connections;
-- authenticating every connection with the host-signed credential (see
+- authenticating every connection with the Airway-signed credential (see
   [`identity.md`](identity.md));
 - tracking which user and device are connected to which Gateway instance;
 - validating commands and forwarding accepted operations to internal services;
@@ -81,7 +81,7 @@ Gateway instances are horizontally scalable and disposable. Each instance
 keeps only the live socket objects and bounded outbound queues for its own
 connections. Shared coordination uses the following components:
 
-- **Authentication source:** validates the Airway IM host-signed credential
+- **Authentication source:** validates the Airway IM Airway-signed credential
   (see [`identity.md`](identity.md)) and resolves it to an internal user ID. A
   short-lived cache may reduce auth-service load, but cached verifications
   must expire quickly; credentials are stateless and become invalid only by
@@ -107,7 +107,7 @@ every Gateway does not scale and is prohibited as the primary routing design.
 
 ### 4.1 Establishment
 
-1. The client obtains a host-signed credential from the host backend (directly
+1. The client obtains an Airway-signed credential from the Airway backend (directly
    signed with the shared secret, or minted via the backend's internal
    credentials endpoint; see [`identity.md`](identity.md)).
 2. The client chooses a URL from the bootstrap-provided Gateway list.
@@ -174,7 +174,7 @@ Clients reconnect with exponential backoff and jitter, for example from 1
 second up to 30 seconds. They should rotate through the bootstrap Gateway list
 instead of repeatedly selecting a failed endpoint. Authentication errors must
 not be retried indefinitely; the client should obtain a fresh credential from
-the host backend or return to login. After reconnecting, the client requests missed messages from the
+the Airway backend or return to login. After reconnecting, the client requests missed messages from the
 durable synchronization API using its last acknowledged cursor. The WebSocket
 connection alone does not guarantee recovery of events sent while offline.
 

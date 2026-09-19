@@ -135,7 +135,7 @@ export class IMClient {
   }
 
   // Mint a credential through the server-to-server endpoint. Intended for
-  // local development and demos; production hosts sign credentials themselves.
+  // local development and demos; production Airway projects sign credentials themselves.
   // The internal API lives on its own listener, so mintUrl (default: baseUrl)
   // usually points at a different port than the public API.
   static async mint(

@@ -30,7 +30,7 @@ The three backend services must be running (see the repo root README,
 
 | Service | Port | Notes |
 | --- | --- | --- |
-| backend | 1905 | any Airway host with the plugin enabled |
+| backend | 1905 | any Airway application with the plugin enabled |
 | gateway | 1910 | `deps/im/gateway` |
 | delivery | 1920 | `deps/im/delivery` |
 

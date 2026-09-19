@@ -1,9 +1,9 @@
 # Get the Current User
 
 `GET /api/v1/me` returns the user identified by an Airway IM credential.
-The plugin ships no login flow: the credential is signed by the host
+The plugin ships no login flow: the credential is signed by the Airway backend
 application backend with the shared `IM_AUTH_SECRET` (or minted on the
-host's behalf through `POST /internal/v1/credentials`). The first time a
+Airway project's behalf through `POST /internal/v1/credentials`). The first time a
 credential authenticates, the user is registered automatically. See
 [`../design/identity.md`](../design/identity.md) for the credential format.
 

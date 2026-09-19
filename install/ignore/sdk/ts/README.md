@@ -36,26 +36,33 @@ Taro / uni-app 直接 import 即可（优先使用 ESM 产物）。
 
 ## 快速开始
 
-### 1. 服务端签发凭证
+### 1. 由你自己的业务后端获取并下发凭证
 
-SDK 不含登录逻辑。由你自己的业务后端用 `IM_AUTH_SECRET` 为登录用户签发
-`(name, uuid)` HMAC 凭证后下发给小程序（24 小时有效，过期前重新签发）。
-Node.js 签发示例：
+SDK 不含登录逻辑，也不负责身份认证。用户先在你的平台完成自己的登录
+（账号密码、手机验证码、微信 `code2session` 等）；登录通过后，**你（第三方
+平台）自己的服务器后端**（PHP、Java 等任意语言）从自己的用户表取出
+`(name, uuid)`，向 Airway 项目的 IM 服务以**服务端对服务端**方式请求签发凭证
+——调用内部签发接口 `POST /internal/v1/credentials`（携带
+`X-IM-Internal-Secret`），再把返回的凭证连同你自己的会话 token 一起在登录
+响应里下发给小程序（24 小时有效，过期前重新签发）。
 
-```js
-const crypto = require("crypto");
+两个必须分清的点：
 
-function mintCredential(name, uuid, secret) {
-  const payload = Buffer.from(
-    JSON.stringify({ name, uuid, exp: Math.floor(Date.now() / 1000) + 86400 }),
-  ).toString("base64url");
-  const sig = crypto
-    .createHmac("sha256", secret)
-    .update(`im1.${payload}`)
-    .digest("base64url");
-  return `im1.${payload}.${sig}`;
-}
-```
+- 凭证永远由**你的后端**获取并下发，客户端从不向 IM 服务器索取凭证：IM
+  的公开 API（Airway 项目的 `:1905`）只验签、从不给客户端签发凭证。签发只
+  发生在内部接口 `POST /internal/v1/credentials` 上，受 `IM_INTERNAL_SECRET`
+  保护，仅限服务端之间调用。该接口默认只监听 `127.0.0.1:1906`：你的后端
+  与 Airway 项目同机部署时可直接调用；不同机时两者必须处在同一个内网（同
+  VPC / 机房，或 VPN、专线打通），由 Airway 项目方把 `IM_INTERNAL_ADDR`
+  绑定到内网网卡后，经内网地址调用——不向公网暴露。
+- 签名密钥 `IM_AUTH_SECRET` 只保存在 Airway 项目的 IM 服务端，你的后端只需要
+  `IM_INTERNAL_SECRET`。`(name, uuid)` 也不需要、不应该由客户端发送——
+  它们本来就在你的数据库里。客户端没有 secret，只持有并出示签好的凭证
+  （REST 用 `Authorization: Bearer`，WebSocket 用首条 `auth` 命令）。
+
+**前提：你的平台必须有自己的服务器后端。** 纯前端、无服务器的小程序无法
+安全接入——客户端没有任何安全途径获取凭证，也没有地方存放
+`IM_INTERNAL_SECRET`；能直接获取凭证的一方，就能冒充任意用户。
 
 其他语言与完整规则见
 [`deps/im/docs/design/identity.md`](../../deps/im/docs/design/identity.md)。

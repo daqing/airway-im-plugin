@@ -7,12 +7,14 @@ OpenAPI 3.1 document and can be copied into an `.yaml` file for code generation.
 Implementation notes:
 
 - Production clients must use HTTPS. The HTTP server URL is for local testing.
-- Authenticated API operations use a host-signed user credential:
-  `Authorization: Bearer <user-credential>`. The host backend signs the
-  credential with the shared `IM_AUTH_SECRET`, or obtains one on the user's
-  behalf from `POST /internal/v1/credentials`. The first successful
-  authentication registers the user automatically; there is no separate
-  provisioning step. See [`../design/identity.md`](../design/identity.md).
+- Authenticated API operations use an Airway-signed user credential:
+  `Authorization: Bearer <user-credential>`. The signing backend is the
+  integrating platform's own server (see identity.md §4.1) — never the
+  IM API itself, and never the client. It signs the credential with the
+  shared `IM_AUTH_SECRET`, or obtains one on the user's behalf from
+  `POST /internal/v1/credentials`. The first successful authentication
+  registers the user automatically; there is no separate provisioning
+  step. See [`../design/identity.md`](../design/identity.md).
 - Application JSON responses generally use `{code, data, message}`. Storage
   endpoints predate that envelope and intentionally document their actual
   response shapes.
@@ -610,7 +612,7 @@ paths:
       description: >-
         Exchanges IM_ADMIN_USERNAME / IM_ADMIN_PASSWORD credentials for a
         12-hour administrator session token. This plugin ships no user login
-        flow; end users authenticate with host-signed credentials (see
+        flow; end users authenticate with Airway-signed credentials (see
         deps/im/docs/design/identity.md).
       security: []
       requestBody:
@@ -652,7 +654,7 @@ paths:
       operationId: adminListUsers
       summary: List registered users
       description: >-
-        Lists identities registered automatically the first time a host-signed
+        Lists identities registered automatically the first time an Airway-signed
         credential authenticated. last_seen_at shows the most recent
         authenticated activity at five-minute granularity.
       security:
@@ -686,7 +688,7 @@ paths:
         Bumps the user's token_version, immediately invalidating every
         credential minted for them by POST /internal/v1/credentials, and
         best-effort kicks their live gateway connections. Revocation is not
-        a ban: the host may mint a fresh credential at any time.
+        a ban: the Airway project may mint a fresh credential at any time.
       security:
         - adminBearerAuth: []
       parameters:
@@ -912,7 +914,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: Airway IM host-signed credential
+      bearerFormat: Airway IM Airway-signed credential
     adminBearerAuth:
       type: http
       scheme: bearer
@@ -943,7 +945,7 @@ components:
           format: int64
         uuid:
           type: string
-          description: Stable, unique identity assigned by the host application.
+          description: Stable, unique identity assigned by the Airway application.
         username:
           type: string
         nickname:
@@ -975,7 +977,7 @@ components:
           format: int64
         uuid:
           type: string
-          description: Stable, unique identity assigned by the host application.
+          description: Stable, unique identity assigned by the Airway application.
         username:
           type: string
         nickname:
