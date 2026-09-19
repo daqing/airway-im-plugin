@@ -3,7 +3,7 @@ package me_api
 import (
 	"net/http"
 
-	"github.com/daqing/airway-im-plugin/install/deps/im/app/auth"
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/auth"
 	"github.com/gin-gonic/gin"
 )
 
