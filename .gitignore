@@ -18,4 +18,8 @@
 
 schema.json
 
+# Ruby SDK build artifacts
+/install/ignore/sdk/ruby/pkg/
+/install/ignore/sdk/ruby/*.gem
+
 node_modules/

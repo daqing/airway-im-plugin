@@ -169,6 +169,7 @@ Design contracts:
 | [`install/deps/im/delivery/`](install/deps/im/delivery/) | Standalone Go module (shipped to Airway projects via `plugin:install`): transactional-outbox publisher | 1920 |
 | [`install/ignore/client/`](install/ignore/client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
 | [`install/ignore/sdk/ts/`](install/ignore/sdk/ts/) | JavaScript/TypeScript SDK (npm package `airway-im-sdk-ts`): typed REST client, realtime gateway, and sequence-based sync engine, with built-in WeChat Mini Program and browser adapters | — |
+| [`install/ignore/sdk/ruby/`](install/ignore/sdk/ruby/) | Ruby SDK (gem `airway-im-sdk-ruby`): credential signing/minting, REST client for the IM API, and admin API client for server-side Ruby applications | — |
 | [`install/deps/im/docs/`](install/deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
 
 Key plugin packages:
@@ -289,8 +290,11 @@ Users are identified by the Airway application's `(name, uuid)` pair, signed
 into an HMAC credential. A user is auto-registered in the `users` table the
 first time a valid credential is presented — there is no separate
 provisioning step. The full format, Airway-side signing examples (Go,
-Node.js, Python), and rotation rules are in
+Node.js, Python, Ruby), and rotation rules are in
 [`install/deps/im/docs/design/identity.md`](install/deps/im/docs/design/identity.md).
+Ruby applications can also use the SDK gem (`airway-im-sdk-ruby`,
+[`install/ignore/sdk/ruby/`](install/ignore/sdk/ruby/)), which wraps credential
+signing/minting and the whole IM API.
 
 For local development, the quickest way to get a credential is the
 server-to-server minting endpoint on the internal listener:

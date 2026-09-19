@@ -201,6 +201,30 @@ def mint_credential(secret: str, uuid: str, name: str, ttl_seconds: int) -> str:
     return f"im1.{payload}.{sig}"
 ```
 
+Ruby:
+
+```ruby
+require "base64"
+require "json"
+require "openssl"
+
+def mint_credential(secret, uuid, name, ttl_seconds)
+  now = Time.now.to_i
+  payload = Base64.urlsafe_encode64(
+    JSON.generate({ uuid: uuid, name: name, iat: now, exp: now + ttl_seconds }),
+    padding: false
+  )
+  signature = Base64.urlsafe_encode64(
+    OpenSSL::HMAC.digest("sha256", secret, "im1.#{payload}"),
+    padding: false
+  )
+  "im1.#{payload}.#{signature}"
+end
+```
+
+The `airway-im-sdk-ruby` gem wraps this as `AirwayIM::Credentials.sign`
+(plus decode/verify helpers and the whole IM API).
+
 The Airway project typically mints a credential when its own session is established
 (login, token refresh) and returns it to the client alongside its own
 session token.
