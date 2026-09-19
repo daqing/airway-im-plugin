@@ -5,8 +5,8 @@ complete IM chat backend: Airway-signed credential identity, direct
 and group conversations, durable messaging with sequence-based
 synchronization, an admin API with content moderation, a WebSocket gateway,
 and a transactional-outbox delivery worker. The companion WebSocket gateway
-and delivery services ship under [`install/deps/`](install/deps/), so the whole stack can run
-standalone from any Airway host app that enables the plugin.
+and delivery services ship under [`install/deps/`](install/deps/); enabling the plugin
+in an Airway host app is all it takes to run the whole stack.
 
 The plugin authenticates users through Airway-signed HMAC credentials: the host
 application signs its `(name, uuid)` identity pair, and the plugin verifies
@@ -23,6 +23,7 @@ A Chinese version of this document is available at
 - [Authenticating users](#authenticating-users)
 - [Using the IM API](#using-the-im-api)
 - [Connecting over WebSocket](#connecting-over-websocket)
+- [Admin web console](#admin-web-console)
 - [Configuration reference](#configuration-reference)
 - [Development](#development)
 
@@ -202,8 +203,9 @@ gateway/delivery (each ships a `Containerfile`).
 
 ### Using as a plugin
 
-Enable the plugin in any Airway application — either with the Airway project's
-installer or by hand:
+This is the only way the plugin runs — there is no standalone mode. Enable it
+inside an Airway application, either with the Airway project's installer or
+by hand:
 
 ```bash
 go run . plugin:install github.com/daqing/airway-im-plugin   # in the host app
@@ -227,11 +229,11 @@ API auth, shared with gateway/delivery) in the Airway project's environment —
 the server fails fast at boot when either is missing, logging the variables
 to set.
 
-### Running standalone
+### Running the full stack
 
-Any Airway host app with the plugin enabled is a complete IM backend. To run
-the whole stack on its own, scaffold a fresh Airway project, install the plugin, and
-start the three services:
+Any Airway host app with the plugin enabled is a complete IM backend. For a
+dedicated IM deployment, scaffold a fresh Airway project, install the plugin,
+and start the three services:
 
 ```bash
 go install github.com/daqing/airway@latest
@@ -246,8 +248,8 @@ go run . server       # start the backend on :1905
 ```
 
 The IM migrations are Go DSL changes under `db/migrate/`; they register on
-init through the plugin package and therefore run through the Airway binary
-(`go run . db:migrate`), not the standalone `airway` CLI.
+init through the plugin package and therefore run through the Airway project
+binary (`go run . db:migrate`), not the globally installed `airway` CLI.
 
 Then start the companion services from the `deps/` tree that
 `plugin:install` copied into the Airway project (all three must share
@@ -411,6 +413,31 @@ Clients don't have to implement this contract by hand: the JS/TS SDK
 protocol (first-frame auth, heartbeat, backoff reconnect, event dedupe), and
 sequence-based catch-up sync into a single typed `createIM()` facade, with
 built-in adapters for WeChat Mini Programs and browsers.
+
+## Admin web console
+
+The plugin ships a built-in admin UI at **`/admin/im`** on the backend's
+public port — open `http://127.0.0.1:1905/admin/im` in a browser and sign in
+with `IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD`. Sessions last 12 hours, and
+any request that comes back unauthenticated returns to the login screen. When
+the host serves under a sub-path (`URL_PREFIX`), the console follows it
+automatically.
+
+The UI is an embedded Preact bundle (TanStack Query + TanStack Table on a
+vendored copy of the airway-ui component set) served by the plugin binary
+itself — no extra deploy step, no JavaScript toolchain on the host. Four
+pages cover the whole `/admin/api` surface:
+
+| Page | What you can do |
+| --- | --- |
+| **Overview** | Registered users, online count, outbox pending/published (with backlog age and failed attempts), and live gateway/delivery metrics panels; auto-refreshes every 15s and flags degraded services. |
+| **Users** | Searchable identity directory (username, nickname, email, UUID, last seen, token version) with one-click **credential revocation** — bumps `token_version` and reports how many live gateway connections were kicked. |
+| **Conversations** | Group conversations with member/message counts and latest activity; click a row to inspect its messages. |
+| **Messages** | Per-conversation message list (sequence, sender, content, type, status); open a message for detail and **mark it illegal** — content is masked to `***` for clients and a `message.moderated` event fans out to online members. |
+
+The same surface is available programmatically through the `/admin/api`
+endpoints documented in
+[`install/deps/im/docs/api/admin.md`](install/deps/im/docs/api/admin.md).
 
 ## Configuration reference
 

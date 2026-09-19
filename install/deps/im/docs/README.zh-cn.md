@@ -1,6 +1,7 @@
 # airway-im-plugin（中文文档）
 
-一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：Airway 项目签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。下分发，在任何启用本插件的 Airway 应用中即可独立跑起整套服务。配套的 gateway 与 delivery 服务随插件一起在 [`deps/`](../../) 下分发，在任何启用本插件的 Airway 应用中即可独立跑起整套服务。
+一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：Airway 项目签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。配套的 gateway 与 delivery 服务随插件一起在
+[`deps/`](../../) 下分发；在 Airway 应用中启用本插件，即可跑起整套服务。
 
 插件通过 Airway 项目签名的 HMAC 凭证认证用户：Airway 应用对自己的 `(name, uuid)` 身份二元组
 签名，插件无状态验签。英文版文档位于仓库根目录的 [`README.md`](../../../README.md)。
@@ -14,6 +15,7 @@
 - [用户认证](#用户认证)
 - [使用 IM API](#使用-im-api)
 - [建立 WebSocket 连接](#建立-websocket-连接)
+- [Web 管理后台](#web-管理后台)
 - [配置项参考](#配置项参考)
 - [开发指南](#开发指南)
 
@@ -162,7 +164,8 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 ### 作为插件使用
 
-在任意 Airway 应用中启用本插件 —— 用 Airway 的安装命令，或手动添加：
+这是本插件唯一的使用方式 —— 没有独立运行模式。将它启用在 Airway 应用之内：
+用 Airway 的安装命令，或手动添加：
 
 ```bash
 go run . plugin:install github.com/daqing/airway-im-plugin   # 在 Airway 应用中执行
@@ -179,10 +182,10 @@ Airway 项目启动时插件会为它启动专用 listener（`IM_INTERNAL_ADDR`�
 落地为 `go.mod`，已存在的文件不会被覆盖）。然后执行 Airway 项目的 `db:migrate` 创建 IM 表，
 并在 Airway 项目环境中设置 `IM_AUTH_SECRET`（实时链路还需 `IM_INTERNAL_SECRET`）。
 
-### 独立运行
+### 启动完整服务栈
 
-任何启用了本插件的 Airway 应用都是完整的 IM backend。想单独跑起整套
-服务，只需脚手架一个新的 Airway 项目、安装插件、启动三个服务：
+任何启用了本插件的 Airway 应用都是完整的 IM backend。想要一套专用的 IM
+部署，脚手架一个全新的 Airway 项目、安装插件、启动三个服务：
 
 ```bash
 go install github.com/daqing/airway@latest
@@ -197,7 +200,7 @@ go run . server       # 启动 backend，监听 :1905
 ```
 
 IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注册，因此必须通过
-**Airway 项目二进制**执行（`go run . db:migrate`），独立的 `airway` CLI 看不到它们。
+**Airway 项目二进制**执行（`go run . db:migrate`），全局安装的 `airway` CLI 看不到它们。
 
 再从 `plugin:install` 复制进 Airway 项目的 `deps/` 目录启动两个配套服务（三个服务
 必须共享同一个 `IM_INTERNAL_SECRET`）：
@@ -364,6 +367,27 @@ HTTP API 一览：
 客户端无需手写上述协议：[`sdk/ts/`](../../../sdk/ts/) 下的 JS/TS SDK（`airway-im-sdk-ts`）把 REST API、网关协议（首帧认证、心跳、退避重连、事件去重）
 与基于 sequence 的补同步封装成一个类型化的 `createIM()` 门面，并内置微信小程序
 与浏览器两套平台适配器。
+
+## Web 管理后台
+
+插件自带管理界面 **`/admin/im`**，挂在 backend 的公共端口上 —— 浏览器打开
+`http://127.0.0.1:1905/admin/im`，用 `IM_ADMIN_USERNAME` /
+`IM_ADMIN_PASSWORD` 登录即可。会话有效期 12 小时；任何请求未通过鉴权都会
+自动回到登录页。宿主项目配置了子路径（`URL_PREFIX`）时，管理后台会自动跟随。
+
+界面是插件二进制自带的内嵌 Preact bundle（TanStack Query + TanStack
+Table，基于 airway-ui 组件集副本）—— 无需额外部署，宿主项目也不需要
+JavaScript 工具链。四个页面覆盖了 `/admin/api` 的全部能力：
+
+| 页面 | 功能 |
+| --- | --- |
+| **概览（Overview）** | 注册用户数、在线人数、outbox 待发布/已发布（含积压时长与失败次数）、gateway/delivery 实时指标面板；每 15 秒自动刷新，服务异常时明确标注。 |
+| **用户（Users）** | 可搜索的身份目录（用户名、昵称、邮箱、UUID、最近活跃、token 版本），一键**吊销凭证** —— 递增 `token_version` 并显示踢掉了多少条在线连接。 |
+| **会话（Conversations）** | 群聊列表（成员数、消息数、最近活跃）；点击行即可进入消息查看。 |
+| **消息（Messages）** | 按会话查看完整消息（sequence、发送者、内容、类型、状态）；打开详情并可**标记违规** —— 内容对客户端屏蔽为 `***`，并向在线成员扇出 `message.moderated` 事件。 |
+
+需要程序化访问同一能力时，使用 `/admin/api` 的 HTTP 端点
+（[`deps/im/docs/api/admin.md`](api/admin.md)）。
 
 ## 配置项参考
 
