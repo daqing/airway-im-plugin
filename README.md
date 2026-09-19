@@ -153,7 +153,7 @@ Design contracts:
 | [`deps/im/gateway/`](deps/im/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
 | [`deps/im/delivery/`](deps/im/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
 | [`client/`](client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
-| [`sdk/miniprogram/`](sdk/miniprogram/) | WeChat Mini Program / browser SDK (npm package): typed REST client, realtime gateway, and sequence-based sync engine with built-in wx and browser adapters | — |
+| [`sdk/js/`](sdk/js/) | JavaScript/TypeScript SDK (npm package `airway-im-sdk`): typed REST client, realtime gateway, and sequence-based sync engine, with built-in WeChat Mini Program and browser adapters | — |
 | [`deps/im/docs/`](deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
 
 Key plugin packages:
@@ -373,11 +373,11 @@ credential as the **first** application message:
 Endpoint guides: [`deps/im/docs/api/messages.md`](deps/im/docs/api/messages.md),
 [`deps/im/docs/api/me.md`](deps/im/docs/api/me.md), [`deps/im/docs/api/admin.md`](deps/im/docs/api/admin.md).
 
-Clients don't have to implement this contract by hand: the Mini Program /
-browser SDK under [`sdk/miniprogram/`](sdk/miniprogram/) wraps the REST API,
-the gateway protocol (first-frame auth, heartbeat, backoff reconnect, event
-dedupe), and sequence-based catch-up sync into a single typed `createIM()`
-facade, with built-in adapters for WeChat Mini Programs and browsers.
+Clients don't have to implement this contract by hand: the JS/TS SDK
+(`airway-im-sdk`) under [`sdk/js/`](sdk/js/) wraps the REST API, the gateway
+protocol (first-frame auth, heartbeat, backoff reconnect, event dedupe), and
+sequence-based catch-up sync into a single typed `createIM()` facade, with
+built-in adapters for WeChat Mini Programs and browsers.
 
 ## Configuration reference
 

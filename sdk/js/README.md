@@ -1,8 +1,9 @@
-# airway-im-miniprogram
+# airway-im-sdk
 
-[Airway IM](https://github.com/daqing/airway-im-plugin) 微信小程序 / 浏览器
-SDK：把后端的 REST API 与 WebSocket 网关协议封装成一套开箱即用的 TypeScript
-接口，客户端无需自己实现凭证、网关首帧认证、心跳、断线重连和序列补同步等协议代码。
+[Airway IM](https://github.com/daqing/airway-im-plugin) 的 JS/TS SDK，覆盖
+微信小程序与浏览器（Vue / React / 普通网页）：把后端的 REST API 与 WebSocket
+网关协议封装成一套开箱即用的 TypeScript 接口，客户端无需自己实现凭证、
+网关首帧认证、心跳、断线重连和序列补同步等协议代码。
 
 零运行时依赖，输出 CommonJS + ESM 双格式（`dist/cjs` / `dist/esm`），同时兼容
 微信开发者工具「构建 npm」、Taro / uni-app 以及 Vue / React 等浏览器框架。
@@ -27,7 +28,7 @@ SDK：把后端的 REST API 与 WebSocket 网关协议封装成一套开箱即�
 ## 安装
 
 ```bash
-npm install airway-im-miniprogram
+npm install airway-im-sdk
 ```
 
 微信开发者工具：菜单「工具 → 构建 npm」后即可 `import`。
@@ -62,7 +63,7 @@ function mintCredential(name, uuid, secret) {
 ### 2. 小程序内初始化并收发消息
 
 ```ts
-import { createIM } from "airway-im-miniprogram";
+import { createIM } from "airway-im-sdk";
 
 const im = createIM({
   apiUrl: "https://im.example.com",   // IM 后端（:1905），必须是 https
@@ -159,7 +160,7 @@ App({
 传输失败时 `status === 0`）。常用判断：
 
 ```ts
-import { IMError, ErrorCode } from "airway-im-miniprogram";
+import { IMError, ErrorCode } from "airway-im-sdk";
 
 try {
   await im.sendMessage(id, "hi");
@@ -204,7 +205,7 @@ SDK 核心与平台无关；小程序端默认使用 `wechatAdapter`，浏览器
 `browserAdapter`（fetch / WebSocket / FormData / localStorage）即可：
 
 ```ts
-import { createIM, browserAdapter } from "airway-im-miniprogram";
+import { createIM, browserAdapter } from "airway-im-sdk";
 
 export const im = createIM({
   apiUrl: "https://im.example.com",
