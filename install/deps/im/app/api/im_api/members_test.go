@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daqing/airway-im-plugin/deps/im/app/auth"
-	"github.com/daqing/airway-im-plugin/deps/im/app/repo"
+	"github.com/daqing/airway-im-plugin/install/deps/im/app/auth"
+	"github.com/daqing/airway-im-plugin/install/deps/im/app/repo"
 )
 
 func memberCredential(t *testing.T, id int64, username string) string {

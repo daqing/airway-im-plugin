@@ -5,14 +5,14 @@ complete IM chat backend: host-signed credential identity, direct
 and group conversations, durable messaging with sequence-based
 synchronization, an admin API with content moderation, a WebSocket gateway,
 and a transactional-outbox delivery worker. The companion WebSocket gateway
-and delivery services ship under [`deps/`](deps/), so the whole stack can run
+and delivery services ship under [`install/deps/`](install/deps/), so the whole stack can run
 standalone from any Airway host app that enables the plugin.
 
 The plugin authenticates users through host-signed HMAC credentials: the host
 application signs its `(name, uuid)` identity pair, and the plugin verifies
 it statelessly.
 A Chinese version of this document is available at
-[`deps/im/docs/README.zh-cn.md`](deps/im/docs/README.zh-cn.md).
+[`install/deps/im/docs/README.zh-cn.md`](install/deps/im/docs/README.zh-cn.md).
 
 ## Table of contents
 
@@ -61,13 +61,13 @@ API. Delivery is at-least-once; clients deduplicate by `message_id` /
 
 Design contracts:
 
-- [`deps/im/docs/design/identity.md`](deps/im/docs/design/identity.md) — host-signed
+- [`install/deps/im/docs/design/identity.md`](install/deps/im/docs/design/identity.md) — host-signed
   credential format, minting, client usage, rotation and revocation
-- [`deps/im/docs/design/gateway.md`](deps/im/docs/design/gateway.md) — wire protocol,
+- [`install/deps/im/docs/design/gateway.md`](install/deps/im/docs/design/gateway.md) — wire protocol,
   connection lifecycle, limits, security model
-- [`deps/im/docs/design/delivery.md`](deps/im/docs/design/delivery.md) — outbox pattern,
+- [`install/deps/im/docs/design/delivery.md`](install/deps/im/docs/design/delivery.md) — outbox pattern,
   fan-out strategy, ordering and idempotency semantics
-- [`deps/im/docs/design/conversation.md`](deps/im/docs/design/conversation.md) — conversation
+- [`install/deps/im/docs/design/conversation.md`](install/deps/im/docs/design/conversation.md) — conversation
   model, direct-conversation uniqueness, membership and authorization rules
 
 ## Features
@@ -150,11 +150,11 @@ Design contracts:
 | Path | Role | Default port |
 | --- | --- | --- |
 | repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin (package `implugin`): IM API, admin API, internal API, migrations, REPL models | — |
-| [`deps/im/gateway/`](deps/im/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
-| [`deps/im/delivery/`](deps/im/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
-| [`client/`](client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
-| [`sdk/ts/`](sdk/ts/) | JavaScript/TypeScript SDK (npm package `airway-im-sdk-ts`): typed REST client, realtime gateway, and sequence-based sync engine, with built-in WeChat Mini Program and browser adapters | — |
-| [`deps/im/docs/`](deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
+| [`install/deps/im/gateway/`](install/deps/im/gateway/) | Standalone Go module (shipped to hosts via `plugin:install`): WebSocket gateway | 1910 |
+| [`install/deps/im/delivery/`](install/deps/im/delivery/) | Standalone Go module (shipped to hosts via `plugin:install`): transactional-outbox publisher | 1920 |
+| [`install/ignore/client/`](install/ignore/client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
+| [`install/ignore/sdk/ts/`](install/ignore/sdk/ts/) | JavaScript/TypeScript SDK (npm package `airway-im-sdk-ts`): typed REST client, realtime gateway, and sequence-based sync engine, with built-in WeChat Mini Program and browser adapters | — |
+| [`install/deps/im/docs/`](install/deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
 
 Key plugin packages:
 
@@ -168,7 +168,7 @@ Key plugin packages:
 | `app/models` | `User` model + REPL registry |
 | `app/repo` | Thin sqlx facade over the framework's `database/sql` pool |
 | `app/utils` | ULID generator used for conversation/message/event IDs |
-| `host/db/migrate` | Schema migrations (users, conversations, members, messages, idempotency, outbox, moderation) |
+| `install/host/db/migrate` | Schema migrations (users, conversations, members, messages, idempotency, outbox, moderation) |
 
 ## Setup
 
@@ -192,7 +192,7 @@ import the plugin registers its routes (`/api/v1/...`, `/admin/api`), its Go
 DSL migrations, and the `User` REPL model. The internal API (`/internal/v1`)
 is served separately: when the host boots, the plugin starts a dedicated
 listener for it (`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`).
-`plugin:install` also copies the plugin's `deps/` tree into the host's own
+`plugin:install` also copies the plugin's `install/deps/` tree into the host's own
 `deps/` directory — that is how the `gateway/` and `delivery/` companion
 services arrive at `deps/im/gateway` and `deps/im/delivery` (their
 `go.mod.templ` files are installed as `go.mod`; existing files are
@@ -248,7 +248,7 @@ The companion services ship their module files as `go.mod.templ` (Go module
 zips drop nested `go.mod` files); `plugin:install` materializes them as
 `go.mod` in the host. To hack on this repository itself, point the host's
 `go.mod` at the local checkout with a `replace` directive, and run
-`just deps-setup` once here to materialize `deps/*/go.mod` for direct
+`just deps-setup` once here to materialize `install/deps/*/go.mod` for direct
 `go run`.
 
 ### Upgrading from an older plugin version
@@ -275,7 +275,7 @@ into an HMAC credential. A user is auto-registered in the `users` table the
 first time a valid credential is presented — there is no separate
 provisioning step. The full format, host-side signing examples (Go,
 Node.js, Python), and rotation rules are in
-[`deps/im/docs/design/identity.md`](deps/im/docs/design/identity.md).
+[`install/deps/im/docs/design/identity.md`](install/deps/im/docs/design/identity.md).
 
 For local development, the quickest way to get a credential is the
 server-to-server minting endpoint on the internal listener:
@@ -298,7 +298,7 @@ All endpoints answer with the standard envelope
 `{"code":0,"data":…,"message":null}` and authenticate via
 `Authorization: Bearer <credential>`. The complete client contract —
 including error codes and the WebSocket event format — is in
-[`deps/im/docs/api/openapi.md`](deps/im/docs/api/openapi.md).
+[`install/deps/im/docs/api/openapi.md`](install/deps/im/docs/api/openapi.md).
 
 ```bash
 # Create a group with user 2 (bob) as a member
@@ -370,11 +370,11 @@ credential as the **first** application message:
 - `{"cmd":"ping"}` answers `{"code":0,"data":"PONG"}`; protocol-level
   ping/pong runs automatically every 30 seconds.
 
-Endpoint guides: [`deps/im/docs/api/messages.md`](deps/im/docs/api/messages.md),
-[`deps/im/docs/api/me.md`](deps/im/docs/api/me.md), [`deps/im/docs/api/admin.md`](deps/im/docs/api/admin.md).
+Endpoint guides: [`install/deps/im/docs/api/messages.md`](install/deps/im/docs/api/messages.md),
+[`install/deps/im/docs/api/me.md`](install/deps/im/docs/api/me.md), [`install/deps/im/docs/api/admin.md`](install/deps/im/docs/api/admin.md).
 
 Clients don't have to implement this contract by hand: the JS/TS SDK
-(`airway-im-sdk-ts`) under [`sdk/ts/`](sdk/ts/) wraps the REST API, the gateway
+(`airway-im-sdk-ts`) under [`install/ignore/sdk/ts/`](install/ignore/sdk/ts/) wraps the REST API, the gateway
 protocol (first-frame auth, heartbeat, backoff reconnect, event dedupe), and
 sequence-based catch-up sync into a single typed `createIM()` facade, with
 built-in adapters for WeChat Mini Programs and browsers.
@@ -405,9 +405,9 @@ built-in adapters for WeChat Mini Programs and browsers.
 
 ```bash
 go test ./...                # unit tests (im/admin/me/routes…)
-just deps-setup              # one-time: deps/*/go.mod.templ -> go.mod
-(cd deps/im/gateway && go vet . && go build .)
-(cd deps/im/delivery && go vet . && go build .)
+just deps-setup              # one-time: install/deps/*/go.mod.templ -> go.mod
+(cd install/deps/im/gateway && go vet . && go build .)
+(cd install/deps/im/delivery && go vet . && go build .)
 ```
 
 The test suite covers conversation creation (direct uniqueness,

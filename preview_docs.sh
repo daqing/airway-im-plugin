@@ -1,1 +1,1 @@
-python -m http.server -b 127.0.0.1 -d ./deps/im/docs
+python -m http.server -b 127.0.0.1 -d ./install/deps/im/docs

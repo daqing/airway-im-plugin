@@ -2,9 +2,8 @@
 /tmp
 
 # Locally built service binaries
-/deps/im/gateway/gateway
-/deps/im/delivery/delivery
-/deps/**/go.mod
+/install/deps/im/gateway/gateway
+/install/deps/im/delivery/delivery
 
 .env
 .env.local
@@ -20,6 +19,3 @@
 schema.json
 
 node_modules/
-
-# SDK build output
-/sdk/ts/dist

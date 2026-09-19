@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/daqing/airway-im-plugin/deps/im/app/repo"
-	"github.com/daqing/airway-im-plugin/deps/im/app/utils"
+	"github.com/daqing/airway-im-plugin/install/deps/im/app/repo"
+	"github.com/daqing/airway-im-plugin/install/deps/im/app/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )

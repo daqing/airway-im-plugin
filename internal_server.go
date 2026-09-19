@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/daqing/airway-im-plugin/deps/im/app/api/internal_api"
+	"github.com/daqing/airway-im-plugin/install/deps/im/app/api/internal_api"
 )
 
 // Boot starts the internal service-to-service API on its own listener
