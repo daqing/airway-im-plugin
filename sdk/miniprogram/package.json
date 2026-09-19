@@ -1,0 +1,44 @@
+{
+  "name": "airway-im-miniprogram",
+  "version": "0.1.0",
+  "description": "Airway IM SDK for WeChat Mini Programs: typed REST client, WebSocket gateway with first-frame auth and auto-reconnect, and a sequence-based sync engine",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "miniprogram": "dist/cjs",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run build:esm && npm run build:cjs",
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/write-cjs-package.js",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "verify": "node test/e2e.node.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "airway",
+    "im",
+    "wechat",
+    "miniprogram",
+    "chat",
+    "websocket"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
