@@ -38,6 +38,7 @@ services:
       ADMIN_DELIVERY_METRICS_URL: http://delivery:1920/metrics
     ports:
       - "${BACKEND_PORT:-1905}:1905"
+      - 127.0.0.1:1906:1906
     volumes:
       - backend-data:/data
     healthcheck:
