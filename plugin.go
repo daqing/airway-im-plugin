@@ -19,6 +19,7 @@ import (
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/api/im_api"
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/api/internal_api"
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/api/me_api"
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/dashboard"
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/models"
 
 	// The IM data model's Go DSL migrations self-register on import, so a
@@ -39,6 +40,8 @@ func (Plugin) Name() string { return "im" }
 func (Plugin) MountPath() string { return "/" }
 
 func (Plugin) Routes(r *gin.RouterGroup) {
+	dashboard.Routes(r)
+
 	admin_api.Routes(r)
 
 	v1 := r.Group("/api/v1")

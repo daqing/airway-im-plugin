@@ -100,8 +100,12 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 **管理与审核**
 
-- `/admin/api` 会话登录（`IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD`），
-  12 小时内存会话。
+- 内置 Web 管理后台 `/admin/im`：用 `IM_ADMIN_USERNAME` /
+  `IM_ADMIN_PASSWORD` 登录，即可在浏览器里完成全部管理操作——实时系统状态、
+  用户目录与凭证撤销、群聊会话、消息审查与一键标记违规。前端是插件自带的
+  内嵌 Preact bundle（TanStack Query + TanStack Table，基于 airway-ui
+  组件集），无需额外部署，且遵循 `URL_PREFIX`。
+- `/admin/api` 走同一套会话登录，12 小时内存会话。
 - 系统状态聚合数据库计数、gateway/delivery 的实时指标与在线用户列表；
   用户列表含最近活跃时间。
 - 凭证撤销：`POST /admin/api/users/:uuid/revoke` 递增用户的
@@ -129,7 +133,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 | 路径 | 角色 | 默认端口 |
 | --- | --- | --- |
-| 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API、内部 API、迁移、REPL 模型 | — |
+| 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API 与 Web 后台、内部 API、迁移、REPL 模型 | — |
 | [`deps/im/gateway/`](../gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入 Airway 项目）：WebSocket 网关 | 1910 |
 | [`deps/im/delivery/`](../delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入 Airway 项目）：事务性 outbox 投递器 | 1920 |
 | [`deps/im/docs/`](.) | 设计文档、API 指南、OpenAPI 契约、落地页（`index.html`）、中文文档 | — |
@@ -143,6 +147,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | `app/api/internal_api` | 网关鉴权、凭证签发、outbox 轮询/确认（密钥保护） |
 | `app/api/me_api` | 资料查询 |
 | `app/api/admin_api` | 管理后台端点：会话、用户、状态、审核 |
+| `app/dashboard` | `/admin/im` Web 管理后台：内嵌 bundle（提交在 `web/dist`）、HTML 外壳、静态资产服务 |
 | `app/auth` | 凭证签发/验签与用户自动注册 |
 | `app/models` | `User` 模型与 REPL 注册 |
 | `app/repo` | 框架 `database/sql` 连接池之上的轻量 sqlx 门面 |
@@ -165,7 +170,7 @@ go run . plugin:install github.com/daqing/airway-im-plugin   # 在 Airway 应用
 
 本地目录安装可改用指向本仓库的 `replace` 指令。启用即向 Airway 项目的
 `plugins.go` 添加 blank import `_ "github.com/daqing/airway-im-plugin"`；
-import 时插件注册其路由（`/api/v1/...`、`/admin/api`）、
+import 时插件注册其路由（`/api/v1/...`、`/admin/api`、`/admin/im` Web 管理后台）、
 Go DSL 迁移和 `User` REPL 模型。内部 API（`/internal/v1`）单独提供：
 Airway 项目启动时插件会为它启动专用 listener（`IM_INTERNAL_ADDR`，默认
 `127.0.0.1:1906`）。`plugin:install` 还会把插件的 `deps/`
@@ -332,7 +337,8 @@ HTTP API 一览：
 | `GET /api/v1/conversations/:uuid/messages?after_sequence=N` | 历史消息 / 同步 |
 | `POST /api/v1/conversations/:uuid/messages` | 向指定会话发消息 |
 | `POST /api/v1/messages` | 按会话 ID 发消息 |
-| `/admin/api/*` | 管理后台（登录、状态、用户、审核） |
+| `GET /admin/im` | Web 管理后台（`/admin/api` 之上的浏览器界面） |
+| `/admin/api/*` | 管理 API（登录、状态、用户、审核） |
 | `/internal/v1/*` | 服务间接口（网关鉴权、凭证签发、outbox、确认）—— 独立 listener（默认 `127.0.0.1:1906`）+ 密钥保护 |
 
 ## 建立 WebSocket 连接
@@ -386,9 +392,15 @@ HTTP API 一览：
 ```bash
 go test ./...                # 单元测试（im/admin/me/routes…）
 just deps-setup              # 一次性：deps/*/go.mod.templ -> go.mod
+just dashboard               # 重新构建管理后台 bundle 到 web/dist（产物需提交）
 (cd deps/im/gateway && go vet . && go build .)
 (cd deps/im/delivery && go vet . && go build .)
 ```
+
+管理后台前端位于 `install/lib/im/app/dashboard/web/`（Preact +
+TanStack Query/Table + airway-ui 组件集副本）。提交的 `web/dist` bundle
+直接内嵌进插件二进制，宿主项目不需要任何 JavaScript 工具链；只有改动
+管理后台本身时才需要运行 `just dashboard` 并提交产物。
 
 测试覆盖：会话创建（单聊唯一性、成员校验）、消息持久化（幂等、
 违规内容屏蔽、outbox 事件）、资料查询、管理端点与路由注册。整套服务

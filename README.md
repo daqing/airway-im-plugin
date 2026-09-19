@@ -134,8 +134,14 @@ Design contracts:
 
 **Admin & moderation**
 
-- `/admin/api` with session login (`IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD`),
-  12-hour in-memory sessions.
+- A built-in web console at `/admin/im` — sign in with
+  `IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD` and manage everything from the
+  browser: live system status, user directory with credential revocation,
+  group conversations, message review, and one-click moderation. The UI is
+  an embedded Preact bundle (TanStack Query + TanStack Table on the
+  airway-ui component set) served by the plugin itself — no extra deploy
+  step, and it honors `URL_PREFIX`.
+- `/admin/api` behind the same session login, 12-hour in-memory sessions.
 - System status aggregating database counters plus live gateway/delivery
   metrics and online user uuids; user listing with last-seen timestamps.
 - Credential revocation: `POST /admin/api/users/:uuid/revoke` bumps the
@@ -165,7 +171,7 @@ Design contracts:
 | Path | Role | Default port |
 | --- | --- | --- |
 | repo root (Go module `github.com/daqing/airway-im-plugin`) | The IM plugin contract (package `implugin`): plugin registration, public routes, internal listener boot, REPL models | — |
-| [`install/lib/im/app/`](install/lib/im/app/) | Plugin implementation compiled into the plugin binary (never copied to the host): IM API, admin API, internal API, auth, models, repo | — |
+| [`install/lib/im/app/`](install/lib/im/app/) | Plugin implementation compiled into the plugin binary (never copied to the host): IM API, admin API + web console, internal API, auth, models, repo | — |
 | [`install/deps/im/gateway/`](install/deps/im/gateway/) | Standalone Go module (shipped to Airway projects via `plugin:install`): WebSocket gateway | 1910 |
 | [`install/deps/im/delivery/`](install/deps/im/delivery/) | Standalone Go module (shipped to Airway projects via `plugin:install`): transactional-outbox publisher | 1920 |
 | [`install/ignore/client/`](install/ignore/client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
@@ -181,6 +187,7 @@ Key plugin packages (under `install/lib/im/`):
 | `app/api/internal_api` | Gateway auth, credential minting, outbox poll/ack (secret-protected) |
 | `app/api/me_api` | Profile lookup |
 | `app/api/admin_api` | Admin console endpoints: sessions, users, status, moderation |
+| `app/dashboard` | The `/admin/im` web console: embedded bundle (committed under `web/dist`), HTML shell, asset serving |
 | `app/auth` | Credential mint/verify helpers and user auto-registration |
 | `app/models` | `User` model + REPL registry |
 | `app/repo` | Thin sqlx facade over the framework's `database/sql` pool |
@@ -205,7 +212,8 @@ go run . plugin:install github.com/daqing/airway-im-plugin   # in the host app
 A local checkout can be installed with a `replace` directive pointing at this
 directory instead. Enabling adds a blank import
 `_ "github.com/daqing/airway-im-plugin"` to the Airway project's `plugins.go`; on
-import the plugin registers its routes (`/api/v1/...`, `/admin/api`), its Go
+import the plugin registers its routes (`/api/v1/...`, `/admin/api`, the
+`/admin/im` web console), its Go
 DSL migrations, and the `User` REPL model. The internal API (`/internal/v1`)
 is served separately: when the Airway project boots, the plugin starts a dedicated
 listener for it (`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`).
@@ -370,7 +378,8 @@ HTTP API surface:
 | `GET /api/v1/conversations/:uuid/messages?after_sequence=N` | Message history / sync |
 | `POST /api/v1/conversations/:uuid/messages` | Send message to a conversation |
 | `POST /api/v1/messages` | Send message by conversation id |
-| `/admin/api/*` | Admin console (login, status, users, moderation) |
+| `GET /admin/im` | Admin web console (browser UI over the `/admin/api` surface) |
+| `/admin/api/*` | Admin API (login, status, users, moderation) |
 | `/internal/v1/*` | Service-to-service (gateway auth, credential minting, outbox, ack) — secret-protected |
 
 ## Connecting over WebSocket
@@ -428,9 +437,16 @@ built-in adapters for WeChat Mini Programs and browsers.
 ```bash
 go test ./...                # unit tests (im/admin/me/routes…)
 just deps-setup              # one-time: install/deps/*/go.mod.templ -> go.mod
+just dashboard               # rebuild the admin console bundle into web/dist (commit the output)
 (cd install/deps/im/gateway && go vet . && go build .)
 (cd install/deps/im/delivery && go vet . && go build .)
 ```
+
+The admin console frontend lives in `install/lib/im/app/dashboard/web/`
+(Preact + TanStack Query/Table + a vendored copy of the airway-ui component
+set). The committed `web/dist` bundle is embedded into the plugin binary, so
+hosts never need a JavaScript toolchain; only console changes require running
+`just dashboard` and committing the output.
 
 The test suite covers conversation creation (direct uniqueness,
 member validation), message persistence (idempotency, moderation masking,

@@ -3,7 +3,6 @@ package admin_api
 import (
 	"bufio"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -115,7 +114,7 @@ func loadDatabaseStatus() (systemStatus, error) {
 	if err := db.Get(&status.Outbox.FailedAttempts, "SELECT COALESCE(SUM(attempts), 0) FROM outbox_events WHERE published_at IS NULL"); err != nil {
 		return status, err
 	}
-	var oldest sql.NullTime
+	var oldest nullableTimestamp
 	if err := db.Get(&oldest, "SELECT MIN(created_at) FROM outbox_events WHERE published_at IS NULL"); err != nil {
 		return status, err
 	}
@@ -126,6 +125,58 @@ func loadDatabaseStatus() (systemStatus, error) {
 		}
 	}
 	return status, nil
+}
+
+// nullableTimestamp scans timestamp aggregates like MIN(created_at): the
+// column type is lost on aggregate columns, so sqlite hands the value back
+// as text (however the value was bound) while postgres and mysql hand back
+// driver-native time values.
+type nullableTimestamp struct {
+	Valid bool
+	Time  time.Time
+}
+
+func (t *nullableTimestamp) Scan(value any) error {
+	switch v := value.(type) {
+	case nil:
+		t.Valid, t.Time = false, time.Time{}
+	case time.Time:
+		t.Valid, t.Time = true, v
+	case string:
+		parsed, err := parseTimestampText(v)
+		if err != nil {
+			return err
+		}
+		t.Valid, t.Time = true, parsed
+	case []byte:
+		parsed, err := parseTimestampText(string(v))
+		if err != nil {
+			return err
+		}
+		t.Valid, t.Time = true, parsed
+	default:
+		return fmt.Errorf("cannot scan %T as a timestamp", value)
+	}
+	return nil
+}
+
+// Timestamp layouts seen in the wild: RFC3339 text (string inserts and
+// proxied ISO timestamps), Go's time.String() form (how the sqlite driver
+// binds time.Time parameters), and plain seconds-precision forms.
+var timestampLayouts = []string{
+	time.RFC3339Nano,
+	"2006-01-02 15:04:05.999999999 -0700 MST",
+	"2006-01-02 15:04:05.999999999-07:00",
+	"2006-01-02 15:04:05.999999999",
+}
+
+func parseTimestampText(text string) (time.Time, error) {
+	for _, layout := range timestampLayouts {
+		if parsed, err := time.Parse(layout, text); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q as a timestamp", text)
 }
 
 func fetchMetrics(ctx context.Context, endpoint string) serviceMetrics {
