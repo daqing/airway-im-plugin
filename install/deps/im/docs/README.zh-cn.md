@@ -203,12 +203,12 @@ IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注
 必须共享同一个 `IM_INTERNAL_SECRET`）：
 
 ```bash
-(cd deps/im/gateway && BACKEND_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
-(cd deps/im/delivery && BACKEND_URL=http://127.0.0.1:1906 \
+(cd deps/im/gateway && INTERNAL_SERVICE_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
+(cd deps/im/delivery && INTERNAL_SERVICE_URL=http://127.0.0.1:1906 \
                         GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
 
-`BACKEND_URL` 指向 backend 的内部 API listener（`IM_INTERNAL_ADDR`，默认
+`INTERNAL_SERVICE_URL` 指向 backend 的内部 API listener（`IM_INTERNAL_ADDR`，默认
 `127.0.0.1:1906`）而不是公开端口 —— 配套服务只调用 `/internal/v1/*`。
 
 也可以用 Docker 跑起整套服务：`plugin:install` 会在 Airway 项目根目录生成
@@ -230,10 +230,10 @@ IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注
 listener 提供（`IM_INTERNAL_ADDR`，默认 `127.0.0.1:1906`），公开端口访问
 它会返回 404。在 Airway 项目 `go.mod` 中升级插件依赖后：
 
-- **把 gateway 和 delivery 的 `BACKEND_URL` 指向内部 listener**（例如
-  `http://127.0.0.1:1906`）。随插件分发的默认值已经指向新地址；只有显式
-  设置过 `BACKEND_URL`（通常是 `http://<host>:1905`）的部署需要修改，
-  否则实时链路会中断。
+- **把 gateway 和 delivery 的 `BACKEND_URL` 改名为 `INTERNAL_SERVICE_URL`**
+  并指向内部 listener（例如 `http://127.0.0.1:1906`）。随插件分发的默认值
+  已经指向新地址；只有显式设置过 `BACKEND_URL`（旧变量名，通常是
+  `http://<host>:1905`）的部署需要改名并调整指向，否则实时链路会中断。
 - 如果 gateway/delivery 与 backend 不在同一台机器，把 `IM_INTERNAL_ADDR`
   绑定到内网网卡（代替默认的回环地址），并确保该端口不对公网开放。
 
@@ -381,7 +381,7 @@ HTTP API 一览：
 | `IM_INTERNAL_ADDR` | backend | `127.0.0.1:1906` | 内部 API（`/internal/v1/*`）监听地址；勿暴露到公网 |
 | `ADMIN_GATEWAY_METRICS_URL` / `ADMIN_DELIVERY_METRICS_URL` | backend | 本机的 gateway/delivery | 管理状态聚合的指标端点 |
 | `GATEWAY_ADDR` | gateway | `:1910` | 网关监听地址 |
-| `BACKEND_URL` | gateway、delivery | `http://127.0.0.1:1906` | backend 内部 API 基础 URL |
+| `INTERNAL_SERVICE_URL` | gateway、delivery | `http://127.0.0.1:1906` | backend 内部 API 基础 URL |
 | `GATEWAY_ALLOWED_ORIGINS` | gateway | — | 浏览器客户端的 `Origin` 白名单（逗号分隔） |
 | `DELIVERY_ADDR` | delivery | `:1920` | 投递器监听地址 |
 | `GATEWAY_URL` | delivery | `http://127.0.0.1:1910` | 投递推送的网关基础 URL |

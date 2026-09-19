@@ -172,7 +172,7 @@ func loadConfig() config {
 	if intervalMS < 100 {
 		intervalMS = 100
 	}
-	return config{addr: envOr("DELIVERY_ADDR", ":1920"), backendURL: strings.TrimRight(envOr("BACKEND_URL", "http://127.0.0.1:1906"), "/"), gatewayURL: strings.TrimRight(envOr("GATEWAY_URL", "http://127.0.0.1:1910"), "/"), internalSecret: os.Getenv("IM_INTERNAL_SECRET"), pollInterval: time.Duration(intervalMS) * time.Millisecond}
+	return config{addr: envOr("DELIVERY_ADDR", ":1920"), backendURL: strings.TrimRight(envOr("INTERNAL_SERVICE_URL", "http://127.0.0.1:1906"), "/"), gatewayURL: strings.TrimRight(envOr("GATEWAY_URL", "http://127.0.0.1:1910"), "/"), internalSecret: os.Getenv("IM_INTERNAL_SECRET"), pollInterval: time.Duration(intervalMS) * time.Millisecond}
 }
 
 func envOr(name, fallback string) string {

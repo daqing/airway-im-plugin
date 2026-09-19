@@ -39,7 +39,7 @@ full protocol, limits, and delivery semantics.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `GATEWAY_ADDR` | `:1910` | Listen address |
-| `BACKEND_URL` | `http://127.0.0.1:1906` | Backend base URL for token authentication |
+| `INTERNAL_SERVICE_URL` | `http://127.0.0.1:1906` | Backend internal API base URL (token authentication) |
 | `IM_INTERNAL_SECRET` | — | Shared secret for the internal deliver endpoint; required |
 | `GATEWAY_ALLOWED_ORIGINS` | — | Comma-separated `Origin` allowlist for browser clients |
 

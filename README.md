@@ -254,12 +254,12 @@ Then start the companion services from the `deps/` tree that
 `IM_INTERNAL_SECRET`):
 
 ```bash
-(cd deps/im/gateway && BACKEND_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
-(cd deps/im/delivery && BACKEND_URL=http://127.0.0.1:1906 \
+(cd deps/im/gateway && INTERNAL_SERVICE_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
+(cd deps/im/delivery && INTERNAL_SERVICE_URL=http://127.0.0.1:1906 \
                         GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
 
-`BACKEND_URL` points at the backend's internal API listener
+`INTERNAL_SERVICE_URL` points at the backend's internal API listener
 (`IM_INTERNAL_ADDR`, default `127.0.0.1:1906`), not the public port — the
 companion services only call `/internal/v1/*`.
 
@@ -285,10 +285,12 @@ public port; it now lives on its own listener (`IM_INTERNAL_ADDR`, default
 `127.0.0.1:1906`) and the public port answers 404 for it. After bumping the
 plugin dependency in the Airway project's `go.mod`:
 
-- **Point `BACKEND_URL` of gateway and delivery at the internal listener**
-  (e.g. `http://127.0.0.1:1906`). The shipped defaults already do; only
-  deployments that set `BACKEND_URL` explicitly (typically to
-  `http://<host>:1905`) must change it, or the realtime path stops working.
+- **Rename `BACKEND_URL` of gateway and delivery to `INTERNAL_SERVICE_URL`**
+  and point it at the internal listener (e.g. `http://127.0.0.1:1906`). The
+  shipped defaults already do; only deployments that set `BACKEND_URL`
+  explicitly (the variable's previous name, typically to
+  `http://<host>:1905`) must rename and re-point it, or the realtime path
+  stops working.
 - If gateway/delivery run on different hosts than the backend, bind
   `IM_INTERNAL_ADDR` to an internal interface instead of the loopback
   default and keep that port firewalled from the public network.
@@ -426,7 +428,7 @@ built-in adapters for WeChat Mini Programs and browsers.
 | `IM_INTERNAL_ADDR` | backend | `127.0.0.1:1906` | Listen address of the internal API (`/internal/v1/*`); keep it off the public network |
 | `ADMIN_GATEWAY_METRICS_URL` / `ADMIN_DELIVERY_METRICS_URL` | backend | gateway/delivery on localhost | Metrics endpoints aggregated by admin status |
 | `GATEWAY_ADDR` | gateway | `:1910` | Gateway listen address |
-| `BACKEND_URL` | gateway, delivery | `http://127.0.0.1:1906` | Backend internal API base URL |
+| `INTERNAL_SERVICE_URL` | gateway, delivery | `http://127.0.0.1:1906` | Backend internal API base URL |
 | `GATEWAY_ALLOWED_ORIGINS` | gateway | — | Comma-separated `Origin` allowlist for browser clients |
 | `DELIVERY_ADDR` | delivery | `:1920` | Delivery worker listen address |
 | `GATEWAY_URL` | delivery | `http://127.0.0.1:1910` | Gateway base URL for delivery push |
