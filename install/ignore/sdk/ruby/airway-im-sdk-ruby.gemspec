@@ -21,6 +21,6 @@ Gem::Specification.new do |spec|
   spec.metadata["source_code_uri"] = "#{spec.homepage}/tree/main/install/ignore/sdk/ruby"
   spec.metadata["documentation_uri"] = "#{spec.homepage}/blob/main/install/ignore/sdk/ruby/README.md"
 
-  spec.files = Dir["lib/**/*.rb", "README.md"]
+  spec.files = Dir["lib/**/*.rb", "README*.md"]
   spec.require_paths = ["lib"]
 end
