@@ -4,7 +4,7 @@
 [`deps/`](../../) 下分发；在 Airway 应用中启用本插件，即可跑起整套服务。
 
 插件通过 Airway 项目签名的 HMAC 凭证认证用户：Airway 应用对自己的 `(name, uuid)` 身份二元组
-签名，插件无状态验签。英文版文档位于仓库根目录的 [`README.md`](../../../README.md)。
+签名，插件无状态验签。
 
 ## 目录
 
@@ -44,9 +44,32 @@ backend 的服务间内部 API（`/internal/v1/*` —— 第 2 步的 outbox 轮
 网关鉴权、凭证签发）由独立 listener 提供，默认只监听回环地址
 （`IM_INTERNAL_ADDR`，默认 `127.0.0.1:1906`），不挂在公开端口上。
 
-WebSocket 投递只是低延迟优化，绝不是消息的持久副本：离线客户端通过基于
-sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）；客户端按
-`message_id` / `event_id` 去重，按 `sequence` 排序。
+轮询是无条件的：固定间隔的 ticker（`DELIVERY_POLL_INTERVAL_MS`，默认 500
+毫秒）不管有没有客户端在线都会触发，delivery 也不检查谁在线 —— outbox
+为空时一次轮询只是一条返回空列表的查询，有待发布事件时则全部推给
+gateway。gateway 把事件的目标用户 uuid 对到自己内存中的连接索引上，回报
+投递数量；`delivered: 0`（接收方全部离线）同样算成功。delivery 随即确认，
+backend 将事件标记为已发布，且不做任何重试：没有按接收者的离线队列，
+持续产生消息而没有消费者连接时，每条消息只是一次无人接收的推送，outbox
+不会积压。设计上刻意不做“无人在先就不推”的短路 —— 推送前检查在线状态
+会与重连产生竞态，且只省一次回环 HTTP 调用。WebSocket 投递只是低延迟
+优化，绝不是消息的持久副本：持久副本是第 1 步事务中落库的消息行，离线
+客户端重连后通过基于 sequence 的同步 API 补拉。投递语义为至少一次
+（at-least-once）；客户端按 `message_id` / `event_id` 去重，按 `sequence`
+排序。
+
+outbox 本身就是一张普通的表 `outbox_events`，与消息在同一个事务里写入；
+每行携带 topic、聚合 ID、JSON payload、`created_at`、`published_at`
+（pending 时为空）和 `attempts` 计数。轮询是纯读 —— 每次最多取 100 条
+pending 行，不做任何修改，轮询本身不清空数据。一条事件离开 pending 集合
+只有一条路径：它自己的 ack，而 worker 只在该事件推给 gateway 返回 200
+之后才发起 ack；ack 把 `published_at` 置上时间戳并递增 `attempts`。这是
+软标记，不删除行。ack 严格逐条进行、不整批处理：一批中某条推送失败时，
+它之前的条目都已确认，它本身及其后的条目保持 pending，下一轮轮询重新
+取到；推送成功与 ack 之间 crash 则该事件稍后会被再投一次。上文“至少
+一次”的语义正来自这个窗口。已发布的行永不删除 —— 管理后台的
+pending/published 计数与积压时长就取自 `published_at` —— 因此表会随
+消息量增长；将来在意体积时，可以为旧的已发布行加一个清理任务。
 
 设计契约文档：
 
@@ -139,7 +162,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | [`deps/im/gateway/`](../gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入 Airway 项目）：WebSocket 网关 | 1910 |
 | [`deps/im/delivery/`](../delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入 Airway 项目）：事务性 outbox 投递器 | 1920 |
 | [`deps/im/docs/`](.) | 设计文档、API 指南、OpenAPI 契约、落地页（`index.html`）、中文文档 | — |
-| [`sdk/ts/`](../../../sdk/ts/) | JS/TS SDK（npm 包 `airway-im-sdk-ts`）：类型化 REST 客户端、实时网关、基于 sequence 的同步引擎，内置微信小程序与浏览器适配器 | — |
+| [`ignore/sdk/ts/`](../../../ignore/sdk/ts/) | JS/TS SDK（npm 包 `airway-im-sdk-ts`）：类型化 REST 客户端、实时网关、基于 sequence 的同步引擎，内置微信小程序与浏览器适配器 | — |
 
 插件关键包：
 
@@ -364,7 +387,7 @@ HTTP API 一览：
 端点详解：[`deps/im/docs/api/messages.md`](api/messages.md)、
 [`deps/im/docs/api/me.md`](api/me.md)、[`deps/im/docs/api/admin.md`](api/admin.md)。
 
-客户端无需手写上述协议：[`sdk/ts/`](../../../sdk/ts/) 下的 JS/TS SDK（`airway-im-sdk-ts`）把 REST API、网关协议（首帧认证、心跳、退避重连、事件去重）
+客户端无需手写上述协议：[`ignore/sdk/ts/`](../../../ignore/sdk/ts/) 下的 JS/TS SDK（`airway-im-sdk-ts`）把 REST API、网关协议（首帧认证、心跳、退避重连、事件去重）
 与基于 sequence 的补同步封装成一个类型化的 `createIM()` 门面，并内置微信小程序
 与浏览器两套平台适配器。
 
@@ -430,4 +453,8 @@ TanStack Query/Table + airway-ui 组件集副本）。提交的 `web/dist` bundl
 违规内容屏蔽、outbox 事件）、资料查询、管理端点与路由注册。整套服务
 还做过本地端到端验证：凭证签发 → 建群 → 发消息 → outbox 轮询 →
 网关推送 → WebSocket 收到事件 → outbox 确认。
+
+---
+
+English version: [README.md](../../../../README.md)
 

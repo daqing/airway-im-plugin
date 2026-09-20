@@ -11,8 +11,6 @@ in an Airway host app is all it takes to run the whole stack.
 The plugin authenticates users through Airway-signed HMAC credentials: the host
 application signs its `(name, uuid)` identity pair, and the plugin verifies
 it statelessly.
-A Chinese version of this document is available at
-[`install/deps/im/docs/README.zh-cn.md`](install/deps/im/docs/README.zh-cn.md).
 
 ## Table of contents
 
@@ -55,10 +53,40 @@ poll/ack in step 2, the gateway's auth check, credential minting) is served
 on a separate listener that defaults to loopback only (`IM_INTERNAL_ADDR`,
 default `127.0.0.1:1906`); it is never mounted on the public port.
 
-WebSocket delivery is a latency optimization, never the durable copy of a
-message: offline clients recover through the sequence-based synchronization
-API. Delivery is at-least-once; clients deduplicate by `message_id` /
-`event_id` and reorder by `sequence`.
+Polling is unconditional: a fixed ticker (`DELIVERY_POLL_INTERVAL_MS`,
+default 500 ms) fires whether or not any client is connected, and the worker
+never checks who is online — an empty outbox makes a poll a single query
+returning an empty list, while pending events are all pushed to the gateway.
+The gateway matches each event's target user uuids against its in-memory
+connection index and reports the delivered count; `delivered: 0` (every
+recipient offline) is still a success. The worker then acknowledges the
+event, the backend marks it published, and nothing is retried: there is no
+per-recipient offline queue, so messages created while no consumer is
+connected cost one matching-nothing push each and leave no backlog. The
+design deliberately skips no push — an online check before pushing would
+race with reconnects and save only a loopback call. WebSocket delivery
+remains a latency optimization, never the durable copy of a message: the
+durable copy is the message row committed in step 1's transaction, and
+offline clients recover it through the sequence-based synchronization API.
+Delivery is at-least-once; clients deduplicate by `message_id` / `event_id`
+and reorder by `sequence`.
+
+The outbox itself is an ordinary table, `outbox_events`, written in the
+same transaction as the message; each row carries the topic, the aggregate
+id, the JSON payload, `created_at`, `published_at` (null while pending),
+and an `attempts` counter. A poll is a pure read — up to 100 pending rows,
+no mutations — and polling clears nothing. An event leaves the pending set
+only through its own ack, which the worker issues after that event's
+gateway push returned 200; the ack sets `published_at` and increments
+`attempts`. It is a soft mark, never a row deletion. Acks are strictly
+one-by-one rather than batch: when a push fails mid-batch, the events
+before it are already acknowledged while it and everything after it stay
+pending and are re-fetched on the next poll; a crash between push and ack
+re-delivers the event later. That window is where the at-least-once
+semantics above come from. Published rows are never removed — the admin
+console derives its pending/published counts and backlog age from
+`published_at` — so the table grows with message volume; add a retention
+sweep for old published rows if that ever matters.
 
 Design contracts:
 
@@ -483,4 +511,8 @@ outbox emission), profile lookup, admin endpoints, and route registration.
 The full stack was additionally verified end-to-end locally:
 credential minting → group creation → message send → outbox poll → gateway
 push → WebSocket receipt → outbox ack.
+
+---
+
+中文版本：[install/deps/im/docs/README.zh-cn.md](install/deps/im/docs/README.zh-cn.md)
 
