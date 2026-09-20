@@ -41,9 +41,9 @@ class Conversation {
     }
     /**
      * Initial load: fetch messages since the last persisted cursor (or
-     * fromSequence) and emit them here and on the global stream with source
-     * "history". Mostly redundant after on("message") — that already
-     * auto-tracks — but useful to await the backlog before rendering.
+     * fromSequence) and emit them here and on the global stream. Mostly
+     * redundant after on("message") — that already auto-tracks — but useful
+     * to await the backlog before rendering.
      */
     history(options = {}) {
         return this.im.history(this.id, options);

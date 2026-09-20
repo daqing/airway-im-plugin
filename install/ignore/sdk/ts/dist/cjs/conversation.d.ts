@@ -4,7 +4,7 @@ import type { SendMessageOptions } from "./http.js";
 import type { ChatMessage, ConversationDetails, ConversationKind } from "./types.js";
 export interface ConversationEvents {
     /** New messages in this conversation: ordered, deduplicated, gap-filled. */
-    message: (message: ChatMessage, source: "history" | "realtime") => void;
+    message: (message: ChatMessage) => void;
     /** A previously seen message in this conversation was masked (content "***"). */
     "message.updated": (message: ChatMessage) => void;
     /** Group conversations only: members were added (includes the added users). */
@@ -33,9 +33,9 @@ export declare class Conversation {
     off<K extends EventName>(event: K, listener: Listener<K>): this;
     /**
      * Initial load: fetch messages since the last persisted cursor (or
-     * fromSequence) and emit them here and on the global stream with source
-     * "history". Mostly redundant after on("message") — that already
-     * auto-tracks — but useful to await the backlog before rendering.
+     * fromSequence) and emit them here and on the global stream. Mostly
+     * redundant after on("message") — that already auto-tracks — but useful
+     * to await the backlog before rendering.
      */
     history(options?: {
         fromSequence?: number;

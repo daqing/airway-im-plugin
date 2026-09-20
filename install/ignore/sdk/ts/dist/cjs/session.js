@@ -57,10 +57,10 @@ class AirwayIM {
             http: this.rest,
             storage: options.persistSequences === false ? undefined : this.adapter.storage,
             handlers: {
-                onMessages: (messages, source) => {
+                onMessages: (messages) => {
                     for (const message of messages) {
-                        this.emit("message", message, source);
-                        this.conversations.get(message.conversation_id)?.emitLocal("message", message, source);
+                        this.emit("message", message);
+                        this.conversations.get(message.conversation_id)?.emitLocal("message", message);
                     }
                 },
                 onMessageUpdated: (message) => {
@@ -273,14 +273,13 @@ class AirwayIM {
     /**
      * Initial load for a conversation: fetch messages after fromSequence
      * (default: last persisted sequence, else 0), track the sequence, and emit
-     * each message via the "message" event with source "history". After this,
-     * the conversation is tracked and realtime events auto-heal gaps for it.
+     * each message via the "message" event. After this, the conversation is
+     * tracked and realtime events auto-heal gaps for it.
      */
     history(conversationId, options = {}) {
         return this.sync.fetchFrom(conversationId, {
             fromSequence: options.fromSequence,
             limit: options.limit,
-            source: "history",
         });
     }
     /**

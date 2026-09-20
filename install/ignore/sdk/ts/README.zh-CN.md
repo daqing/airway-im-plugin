@@ -117,9 +117,9 @@ im.connect();
 
 // 单聊：类型就在对象上
 const direct = await im.createDirect(otherUserUUID);   // get-or-create
-direct.on("message", (msg, source) => {
+direct.on("message", (msg) => {
   // 有序、去重、自动补洞（含掉线期间错过的）；首个监听器自动开始跟踪
-  console.log(`[${source}]`, msg.sender.nickname, msg.content);
+  console.log(msg.sender.nickname, msg.content);
 });
 const history = await direct.history();   // 目前为止的离线消息，按 sequence 升序
 
@@ -190,7 +190,7 @@ App({
 | 成员 | 说明 |
 | --- | --- |
 | `id` / `kind` | 会话 id；`"direct"` 或 `"group"` |
-| `on(event, listener)` | `message` `(msg, "history"\|"realtime")`、`message.updated` `(msg)`；群对象还有 `members.added` / `members.removed`。首个 `message` 监听器自动开始跟踪（按游标补历史，之后走实时） |
+| `on(event, listener)` | `message` `(msg)`、`message.updated` `(msg)`；群对象还有 `members.added` / `members.removed`。首个 `message` 监听器自动开始跟踪（按游标补历史，之后走实时） |
 | `history({fromSequence?, limit?})` | 等待积压拉完；以 `"history"` 来源触发 `message` |
 | `send(content, opts?)` | 向该会话发送（幂等/重试语义同 `sendGroupMessage`） |
 | `lastSequence()` / `forget()` | 同步游标；丢弃该会话的全部同步状态 |

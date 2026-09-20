@@ -13,7 +13,7 @@ import type { ChatMessage, ConversationDetails, ConversationKind } from "./types
 
 export interface ConversationEvents {
   /** New messages in this conversation: ordered, deduplicated, gap-filled. */
-  message: (message: ChatMessage, source: "history" | "realtime") => void;
+  message: (message: ChatMessage) => void;
   /** A previously seen message in this conversation was masked (content "***"). */
   "message.updated": (message: ChatMessage) => void;
   /** Group conversations only: members were added (includes the added users). */
@@ -68,9 +68,9 @@ export class Conversation {
 
   /**
    * Initial load: fetch messages since the last persisted cursor (or
-   * fromSequence) and emit them here and on the global stream with source
-   * "history". Mostly redundant after on("message") — that already
-   * auto-tracks — but useful to await the backlog before rendering.
+   * fromSequence) and emit them here and on the global stream. Mostly
+   * redundant after on("message") — that already auto-tracks — but useful
+   * to await the backlog before rendering.
    */
   history(options: { fromSequence?: number; limit?: number } = {}): Promise<ChatMessage[]> {
     return this.im.history(this.id, options);

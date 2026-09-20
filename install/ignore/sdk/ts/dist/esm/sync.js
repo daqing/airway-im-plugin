@@ -80,7 +80,6 @@ export class SyncEngine {
         return this.enqueue(conversationId, () => this.runFetch(conversationId, {
             fromSequence: options.fromSequence,
             limit: options.limit,
-            source: options.source ?? "history",
             maxPages: options.maxPages,
         }));
     }
@@ -100,7 +99,7 @@ export class SyncEngine {
     }
     /** Resynchronize every tracked conversation after a (re)connect. */
     resyncAll() {
-        const jobs = [...this.lastSeq.keys()].map((id) => this.fetchFrom(id, { source: "realtime" }));
+        const jobs = [...this.lastSeq.keys()].map((id) => this.fetchFrom(id));
         return Promise.all(jobs).then(() => undefined);
     }
     enqueue(conversationId, task) {
@@ -124,7 +123,7 @@ export class SyncEngine {
             if (messages.length === 0)
                 break;
             all.push(...messages);
-            this.handlers.onMessages(messages, options.source);
+            this.handlers.onMessages(messages);
             from = messages[messages.length - 1].sequence;
             if (messages.length < limit)
                 break;
@@ -144,7 +143,7 @@ export class SyncEngine {
         if (target !== undefined && target <= this.lastSequence(conversationId)) {
             return; // duplicate or already-applied (e.g. our own send)
         }
-        void this.fetchFrom(conversationId, { source: "realtime" }).catch(() => {
+        void this.fetchFrom(conversationId).catch(() => {
             // The next event for this conversation retries; nothing is lost because
             // the sequence tracker still points at the last applied message.
         });

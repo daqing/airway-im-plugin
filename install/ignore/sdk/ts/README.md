@@ -141,10 +141,10 @@ im.connect();
 
 // Direct chat: the kind lives on the object
 const direct = await im.createDirect(otherUserUUID);   // get-or-create
-direct.on("message", (msg, source) => {
+direct.on("message", (msg) => {
   // ordered, deduplicated, gap-filled (including messages missed while
   // offline); the first listener starts tracking automatically
-  console.log(`[${source}]`, msg.sender.nickname, msg.content);
+  console.log(msg.sender.nickname, msg.content);
 });
 const history = await direct.history();   // backlog so far, ascending sequence
 
@@ -220,8 +220,8 @@ also appears on the facade's global stream (below), and vice versa.
 | Member | Description |
 | --- | --- |
 | `id` / `kind` | Conversation id; `"direct"` or `"group"` |
-| `on(event, listener)` | `message` `(msg, "history"\|"realtime")`, `message.updated` `(msg)`; groups also fire `members.added` / `members.removed`. The first `message` listener starts tracking automatically (history since the last persisted cursor, then realtime) |
-| `history({fromSequence?, limit?})` | Await the backlog; emits with source `"history"` |
+| `on(event, listener)` | `message` `(msg)`, `message.updated` `(msg)`; groups also fire `members.added` / `members.removed`. The first `message` listener starts tracking automatically (history since the last persisted cursor, then realtime) |
+| `history({fromSequence?, limit?})` | Await the backlog; emits each message via `message` |
 | `send(content, opts?)` | Send into this conversation (same idempotency/retry semantics as `sendGroupMessage`) |
 | `lastSequence()` / `forget()` | Sync cursor; drop all state for this conversation |
 | `details()` | Conversation kind + members with roles, fresh from the API |
