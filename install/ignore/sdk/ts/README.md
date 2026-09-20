@@ -2,8 +2,9 @@
 
 The JS/TS SDK for [Airway IM](https://github.com/daqing/airway-im-plugin),
 covering WeChat Mini Programs and browsers (Vue / React / plain web pages). It
-wraps the backend's REST API and WebSocket gateway protocol into ready-to-use
-TypeScript interfaces, so clients never have to implement credentials, the
+wraps the backend's REST API, the WebSocket gateway protocol, and the
+server-to-server credential-minting endpoint into ready-to-use TypeScript
+interfaces, so clients never have to implement credentials, the
 gateway first-frame authentication, heartbeats, reconnect-with-backoff, or
 sequence-based catch-up sync themselves.
 
@@ -17,6 +18,11 @@ uni-app, and browser frameworks such as Vue and React.
   groups / member management), messages (history, send, idempotent retry),
   and file upload, all strongly typed with automatic unwrapping of the
   `{code,data,message}` envelope.
+- **Conversation objects** — `createDirect` / `getDirect` /
+  `createGroup` / `openConversation` return per-conversation
+  objects (`DirectConversation` / `GroupConversation`) with scoped
+  `on("message")` events and `send()` / `history()`; the kind lives on the
+  object, and the first message listener starts tracking automatically.
 - **Realtime gateway** — automatically performs the `{"cmd":"auth"}` first-frame
   authentication, application-level heartbeat (25 s by default), exponential
   backoff reconnection (0.5 s → 10 s), and deduplication by `event_id`.
@@ -28,7 +34,10 @@ uni-app, and browser frameworks such as Vue and React.
 - **Credential renewal** — when a credential expires (HTTP 401/10001 or a
   gateway auth failure), the SDK automatically calls `getCredential` for a
   fresh one and recovers; business code is unaffected.
-- **Mini Program friendly** — the default adapter is built on
+- **Server-side credential minting** — a Node backend obtains credentials
+  through the SDK's `InternalClient` (server-to-server, private network;
+  never bundle it into client code) instead of raw HTTP calls.
+- **Mini Program friendly** — the built-in `wechatAdapter` is built on
   `wx.request` / `wx.connectSocket` / `wx.uploadFile` / `wx.*StorageSync`, and
   automatically restores the connection on `wx.onAppShow` (Mini Programs kill
   sockets when backgrounded).
@@ -58,6 +67,32 @@ credential **server-to-server** by calling the internal minting endpoint
 `X-IM-Internal-Secret`), then returns the finished credential together with
 your own session token in the login response (valid for 24 hours; mint a
 fresh one before expiry).
+
+That call, spelled out in a Node backend — one call with the SDK's
+`InternalClient` (server side only, never bundle it into client code):
+
+```ts
+import { InternalClient } from "airway-im-sdk-ts";
+
+const internal = new InternalClient({
+  internalUrl: "http://127.0.0.1:1906",            // internal listener, private network only
+  internalSecret: process.env.IM_INTERNAL_SECRET!, // the deployment's IM_INTERNAL_SECRET
+});
+
+const minted = await internal.mintCredential({
+  uuid: user.uuid,            // from your own user table
+  name: user.username,
+  nickname: user.displayName, // optional; written only when present
+  ttlSeconds: 86_400,         // optional; default 24 h, 0 = never expires
+});
+
+minted.credential;  // "im1.…" — hand to the client with your login response
+minted.expiresAt;   // RFC 3339 UTC, when to re-mint; null when ttlSeconds: 0
+```
+
+Backends in other languages call the same endpoint over plain HTTP; the
+full contract is documented under *Credential minting API* in the API
+reference below.
 
 Two things must be kept straight:
 
@@ -90,35 +125,37 @@ For other languages and the full rules see
 ### 2. Initialize and exchange messages in a Mini Program
 
 ```ts
-import { createIM } from "airway-im-sdk-ts";
+import { createClient, wechatAdapter } from "airway-im-sdk-ts";
 
-const im = createIM({
+const im = createClient({
   apiUrl: "https://im.example.com",   // IM backend (:1905), must be https
-  wsUrl: "wss://im.example.com",      // WebSocket gateway (:1910), must be wss
+  wsUrl: "wss://im.example.com",      // WebSocket gateway (:1910); the SDK connects to <wsUrl>/ws
   credential: wx.getStorageSync("im-credential"),
+  adapter: wechatAdapter(),           // required: browsers/Node use browserAdapter()
   getCredential: () =>                // called automatically when invalid
     fetchNewCredentialFromYourBackend(),
 });
 
-// Listen for messages: ordered, deduplicated, gap-filling (including
-// messages missed while offline)
-im.on("message", (msg, source) => {
-  console.log(`[${source}]`, msg.sender.nickname, msg.content);
-});
 im.on("status", (s) => console.log("connection:", s));
-
 im.connect();
 
-// Opening a conversation for the first time: pull history and start
-// tracking realtime sync for it
-const { id } = await im.createDirect(otherUserUuid);
-const history = await im.history(id);   // all messages, ascending sequence
+// Direct chat: the kind lives on the object
+const direct = await im.createDirect(otherUserUUID);   // get-or-create
+direct.on("message", (msg, source) => {
+  // ordered, deduplicated, gap-filled (including messages missed while
+  // offline); the first listener starts tracking automatically
+  console.log(`[${source}]`, msg.sender.nickname, msg.content);
+});
+const history = await direct.history();   // backlog so far, ascending sequence
 
 // Sending (the SDK generates the Idempotency-Key automatically and retries
 // network failures with the same key, so a message is never duplicated)
-const sent = await im.sendMessage(id, "你好", { contentType: "text/plain" });
-// or in one call: get-or-create the direct conversation, then send
-await im.sendDirectMessage(otherUserUuid, "你好");
+await direct.send("你好", { contentType: "text/plain" });
+
+// Group chat: the same model
+const group = await im.createGroup("Team", [otherUserUUID]);
+group.on("message", (msg) => console.log(msg.content));
+await group.send("hello");
 ```
 
 ### 3. Page lifecycle recommendations
@@ -137,15 +174,15 @@ App({
 
 ## API reference
 
-### `createIM(options)`
+### `createClient(options)`
 
 | Option | Required | Default | Description |
 | --- | --- | --- | --- |
 | `apiUrl` | ✓ | — | IM backend URL (:1905); https in production |
-| `wsUrl` | | — | Gateway URL (:1910); without it only REST is used, no realtime |
+| `wsUrl` | | — | Gateway base URL (`:1910`) — pass it **without** a path; the SDK appends `/ws` itself (`wsUrl: "ws://localhost:1910"` → default gateway endpoint `ws://localhost:1910/ws`; `wss://…` behind a TLS-terminating proxy). Without it only REST is used, no realtime |
 | `credential` | ✓ | — | User credential issued by your backend |
 | `getCredential` | | — | `() => Promise<string>`, fetches a fresh credential when invalid |
-| `adapter` | | WeChat adapter | Platform adapter; pass `browserAdapter()` in browsers (see below) |
+| `adapter` | ✓ | — | Platform adapter: `wechatAdapter()` in Mini Programs, `browserAdapter()` in browsers/Node; required, never defaulted — `createClient` throws if it is missing |
 | `timeoutMs` | | `15000` | REST request timeout |
 | `pingIntervalMs` | | `25000` | Application-level heartbeat interval, `0` disables |
 | `persistSequences` | | `true` | Persist per-conversation sequence cursors |
@@ -157,27 +194,49 @@ App({
 | --- | --- |
 | `im.me()` | `GET /api/v1/me` |
 | `im.listGroups()` | `GET /api/v1/conversations?type=group` |
-| `im.createConversation({kind, memberUuids, title?})` | `POST /api/v1/conversations` |
-| `im.createDirect(otherUserUuid)` | Same (direct get-or-create) |
-| `im.getDirectConversation(otherUserUuid)` | `GET /api/v1/conversations/direct/:user_uuid` (null when none) |
-| `im.createGroup(title, memberUuids)` | `POST /api/v1/group` |
-| `im.getConversation(uuid)` | `GET /api/v1/conversations/:uuid` |
-| `im.addMembers(conversationId, memberUuids)` | `POST .../members` |
-| `im.removeMember(conversationId, userUuid)` | `DELETE .../members/:user_uuid` |
+| `im.createDirect(otherUserUUID)` | Direct get-or-create; returns the `DirectConversation` object |
+| `im.getDirect(otherUserUUID)` | The existing direct conversation object (null when none) |
+| `im.createGroup(title, memberUUIDs)` | `POST /api/v1/group`; returns the `GroupConversation` object |
+| `im.openConversation(id)` | Open any conversation by id as a conversation object (kind from the registry, else one REST fetch) |
+| `im.addMembers(conversationId, memberUUIDs)` | `POST .../members` |
+| `im.removeMembers(conversationId, userUUIDs: string[])` | `DELETE .../members/:user_uuid` |
 | `im.history(conversationId, {fromSequence?, limit?})` | Pull history + start tracking sync |
 | `im.listMessages(conversationId, {afterSequence?, limit?})` | `GET .../messages` (raw paging) |
-| `im.sendMessage(conversationId, content, opts?)` | `POST /api/v1/messages` |
-| `im.sendDirectMessage(otherUserUuid, content, opts?)` | Get-or-create the direct conversation, then `POST /api/v1/messages` |
+| `im.sendGroupMessage(conversationId, content, opts?)` | `POST /api/v1/messages` |
+| `im.sendDirectMessage(otherUserUUID, content, opts?)` | Get-or-create the direct conversation, then `POST /api/v1/messages` |
 | `im.uploadFile(filePath \| File, dir?)` | `POST /api/v1/storage` |
 | `im.storageUrl(key)` | File download URL (for `<image>` / `wx.downloadFile`) |
 
-`sendMessage` opts: `contentType` (`text/markdown` default / `text/plain`),
+`sendGroupMessage` opts: `contentType` (`text/markdown` default / `text/plain`),
 `idempotencyKey` (auto-generated by default), `retries` (network-failure
 retries, default 1).
 
+### Conversation objects (`DirectConversation` / `GroupConversation`)
+
+Handles are per-conversation objects — the kind lives on the object, and the
+same conversation always yields the same object. Anything emitted on a conversation object
+also appears on the facade's global stream (below), and vice versa.
+
+| Member | Description |
+| --- | --- |
+| `id` / `kind` | Conversation id; `"direct"` or `"group"` |
+| `on(event, listener)` | `message` `(msg, "history"\|"realtime")`, `message.updated` `(msg)`; groups also fire `members.added` / `members.removed`. The first `message` listener starts tracking automatically (history since the last persisted cursor, then realtime) |
+| `history({fromSequence?, limit?})` | Await the backlog; emits with source `"history"` |
+| `send(content, opts?)` | Send into this conversation (same idempotency/retry semantics as `sendGroupMessage`) |
+| `lastSequence()` / `forget()` | Sync cursor; drop all state for this conversation |
+| `details()` | Conversation kind + members with roles, fresh from the API |
+| group only: `title` | Title from creation time |
+| group only: `addMembers(uuids)` / `removeMembers(uuid)` | Member management; members with roles |
+
+```ts
+const group = await im.createGroup("Team", [aliceUuid, bobUuid]);
+group.on("message", (msg) => renderGroupMessage(msg));
+await group.send("hello");
+```
+
 ### Message object (`ChatMessage`)
 
-`sendMessage`, `sendDirectMessage`, `listMessages`, `history`, and realtime
+`sendGroupMessage`, `sendDirectMessage`, `listMessages`, `history`, and realtime
 `message` events all carry the same `ChatMessage` shape:
 
 | Field | Type | Description |
@@ -198,7 +257,10 @@ Sort by `sequence`, never by `created_at`. A retried send with the same
 SDK already deduplicates and gap-fills realtime events for you. `sender`
 reflects the author's current profile, not a send-time snapshot.
 
-### Realtime events (`im.on(name, handler)`)
+### Global stream (`im.on(name, handler)`)
+
+Conversation objects are the per-window API; the facade also exposes a global
+stream, handy for unread badges or a unified inbox:
 
 | Event | Payload | Description |
 | --- | --- | --- |
@@ -215,6 +277,10 @@ Connection control: `im.connect()` (idempotent) / `im.disconnect()` /
 `im.lastSequence(conversationId)` / `im.forgetConversation(conversationId)`
 (e.g. drop the sync cursor after being kicked from a group).
 
+The global `message` event carries only `conversation_id` — the wire format
+has no conversation kind. Use `im.openConversation(msg.conversation_id)` when
+you need the kind or a scoped subscription.
+
 ### Error handling
 
 All REST errors throw `IMError` (`err.code` — the envelope business code,
@@ -225,7 +291,7 @@ Common checks:
 import { IMError, ErrorCode } from "airway-im-sdk-ts";
 
 try {
-  await im.sendMessage(id, "hi");
+  await im.sendGroupMessage(id, "hi");
 } catch (err) {
   if (err instanceof IMError) {
     if (err.isAuthError) /* 10001: credential invalid/expired — wait for auto-renewal or re-login */;
@@ -239,6 +305,45 @@ Full error codes: `10000` internal error, `10001` invalid credential,
 `10003` invalid request, `10005` permission denied, `11001` conversation not
 found, `11002` idempotency key reused with a different request.
 
+### Credential minting API (server-to-server)
+
+TS/Node backends use the SDK's `InternalClient` for this (see Quick start
+step 1); the endpoint itself is plain HTTP, so backends in any language can
+call it directly.
+
+`POST /internal/v1/credentials` on the internal listener (default
+`127.0.0.1:1906`, private network only), authenticated by the
+`X-IM-Internal-Secret` header matching the deployment's `IM_INTERNAL_SECRET`.
+This endpoint is for your backend only — a browser page or Mini Program must
+never call it: whoever can mint credentials can impersonate any user.
+
+On the first mint the user is registered with IM under the `uuid` you supply
+(that same uuid is what your clients later pass to `createDirect` /
+`sendDirectMessage`); the credential carries the user's current
+`token_version`, so revoking the user through the admin API immediately
+invalidates every credential minted before it.
+
+Request body (JSON):
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `uuid` | ✓ | Stable user id from your own user table, 1–64 characters |
+| `name` | ✓ | Account handle, 1–64 characters |
+| `nickname` | | Display name; written only when present, so omitting it never clobbers a profile stored earlier |
+| `avatar_url` | | Avatar URL, up to 2048 characters; same write-only-when-present rule |
+| `ttl_seconds` | | Credential lifetime in seconds; default `86400` (24 h), max `2592000` (30 days), `0` = never expires |
+
+Success returns `{code: 0, data: {credential, expires_at?}}`: `credential`
+is the finished `im1.<payload>.<sig>` token the client presents as
+`Authorization: Bearer` (REST) or the first gateway `auth` command;
+`expires_at` (RFC 3339 UTC) is omitted when `ttl_seconds` is `0`.
+
+Error codes: `10003` invalid JSON, missing/oversized `uuid`/`name`, or
+`ttl_seconds` out of range; `10005` here means the `X-IM-Internal-Secret`
+header is missing or wrong (not the public API's permission denied);
+`10006` the Airway deployment has no `IM_AUTH_SECRET` configured and cannot
+sign; `10000` internal error.
+
 ## Message reliability model
 
 The backend guarantees a monotonically increasing per-conversation
@@ -246,15 +351,16 @@ The backend guarantees a monotonically increasing per-conversation
 of deduplication by `event_id` / `message_id`, ordering by `sequence`, and
 gap-filling via `after_sequence`. Business code only needs to:
 
-1. initialize a conversation with `im.history(id)` (start tracking);
+1. open the conversation — a conversation object's first `on("message")` (or `history()`)
+   starts tracking;
 2. append-render in the `message` event (handle repeated messages idempotently
    by `msg.id`);
-3. render sends optimistically from `sendMessage`'s return value and dedupe
+3. render sends optimistically from `send()`'s return value and dedupe
    the realtime echo by `id`.
 
-Conversations never tracked through `history()` do not auto-fetch messages
-(avoids flushing the whole history); handle them via the `event` event for
-unread badges and similar cases.
+Conversations never tracked do not auto-fetch messages (avoids flushing the
+whole history); handle them via the global `event` event for unread badges
+and similar cases.
 
 ## Mini Program domain configuration
 
@@ -265,18 +371,20 @@ Domains, configure:
 - **socket legal domains**: `wss://im.example.com` (realtime gateway)
 
 For local debugging, check "do not verify legal domains" in the DevTools and
-use `http://127.0.0.1:1905` / `ws://127.0.0.1:1910`.
+use `http://127.0.0.1:1905` / `ws://127.0.0.1:1910` (the gateway endpoint the
+SDK connects to is `ws://127.0.0.1:1910/ws`; the gateway itself serves plain
+WS — `wss` appears only once a reverse proxy terminates TLS).
 
 ## Using in Vue / React / plain web pages
 
-The SDK core is platform-agnostic; Mini Programs use the default
-`wechatAdapter`, while browsers explicitly pass the built-in `browserAdapter`
-(fetch / WebSocket / FormData / localStorage):
+The SDK core is platform-agnostic and takes an explicit adapter — there is no
+default: `wechatAdapter()` in Mini Programs, the built-in `browserAdapter()`
+(fetch / WebSocket / FormData / localStorage) in browsers and Node:
 
 ```ts
-import { createIM, browserAdapter } from "airway-im-sdk-ts";
+import { createClient, browserAdapter } from "airway-im-sdk-ts";
 
-export const im = createIM({
+export const im = createClient({
   apiUrl: "https://im.example.com",
   wsUrl: "wss://im.example.com",
   credential: localStorage.getItem("im-credential") ?? "",

@@ -39,52 +39,65 @@ module AirwayIM
     end
 
     def test_create_direct_posts_get_or_create_body
-      conversation = { "id" => "01AB", "kind" => "direct" }
       client = with_server do |req|
         assert_equal "POST", req.method
         assert_equal "/api/v1/conversations", req.path
         assert_equal({ "kind" => "direct", "member_uuids" => ["uuid-bob"] }, JSON.parse(req.body))
-        [201, envelope(conversation)]
+        [201, envelope({ "id" => "01AB", "kind" => "direct" })]
       end
-      assert_equal conversation, client.create_direct("uuid-bob")
+      direct = client.create_direct("uuid-bob")
+      assert_kind_of DirectConversation, direct
+      assert_equal "01AB", direct.id
+      assert_equal "direct", direct.kind
     end
 
     def test_create_group_omits_nil_title
       client = with_server do |req|
-        body = JSON.parse(req.body)
-        if req.path == "/api/v1/group"
-          assert_equal({ "member_uuids" => %w[uuid-bob uuid-carol] }, body)
-        else
-          assert_equal({ "kind" => "group", "member_uuids" => %w[uuid-bob uuid-carol] }, body)
-        end
+        assert_equal "/api/v1/group", req.path
+        assert_equal({ "member_uuids" => %w[uuid-bob uuid-carol] }, JSON.parse(req.body))
         [201, envelope({ "id" => "01AC", "kind" => "group" })]
       end
-      client.create_group(member_uuids: %w[uuid-bob uuid-carol])
-      client.create_conversation(kind: "group", member_uuids: %w[uuid-bob uuid-carol])
+      group = client.create_group(member_uuids: %w[uuid-bob uuid-carol])
+      assert_kind_of GroupConversation, group
+      assert_equal "01AC", group.id
+      assert_equal "group", group.kind
+      assert_nil group.title
     end
 
-    def test_direct_conversation_returns_existing_conversation
-      conversation = { "id" => "01AB", "kind" => "direct", "title" => nil }
+    def test_create_group_carries_title
+      client = with_server do |req|
+        assert_equal "/api/v1/group", req.path
+        assert_equal({ "title" => "Backend Team", "member_uuids" => %w[uuid-bob uuid-carol] },
+                     JSON.parse(req.body))
+        [201, envelope({ "id" => "01AC", "kind" => "group" })]
+      end
+      group = client.create_group(member_uuids: %w[uuid-bob uuid-carol], title: "Backend Team")
+      assert_equal "Backend Team", group.title
+    end
+
+    def test_get_direct_returns_handle_when_present
       client = with_server do |req|
         assert_equal "GET", req.method
         assert_equal "/api/v1/conversations/direct/uuid-bob", req.path
-        [200, envelope(conversation)]
+        [200, envelope({ "id" => "01AB", "kind" => "direct", "title" => nil })]
       end
-      assert_equal conversation, client.direct_conversation("uuid-bob")
+      direct = client.get_direct("uuid-bob")
+      assert_kind_of DirectConversation, direct
+      assert_equal "01AB", direct.id
     end
 
-    def test_direct_conversation_returns_nil_when_absent
+    def test_get_direct_returns_nil_when_absent
       client = with_server do |_req|
         [404, envelope(nil, code: 11_001, message: "Conversation not found")]
       end
-      assert_nil client.direct_conversation("uuid-bob")
+      assert_nil client.get_direct("uuid-bob")
     end
 
-    def test_direct_conversation_raises_other_errors
+    def test_get_direct_raises_other_errors
       client = with_server do |_req|
         [500, envelope(nil, code: 10_000, message: "boom")]
       end
-      error = assert_raises(Error) { client.direct_conversation("uuid-bob") }
+      error = assert_raises(Error) { client.get_direct("uuid-bob") }
       assert_equal 10_000, error.code
     end
 
@@ -97,9 +110,90 @@ module AirwayIM
         end
         [200, envelope({ "conversation_uuid" => "01 AB", "type" => "group", "members" => [] })]
       end
-      client.conversation("01 AB")
+      client.open_conversation("01 AB").details
       client.add_members("01 AB", ["uuid-carol"])
-      client.remove_member("01 AB", "uuid carol")
+      client.remove_members("01 AB", ["uuid carol"])
+    end
+
+    def test_open_conversation_resolves_kind_from_details
+      client = with_server do |req|
+        case req.path
+        when "/api/v1/conversations/01AB"
+          [200, envelope({ "conversation_uuid" => "01AB", "type" => "group", "title" => "Team", "members" => [] })]
+        when "/api/v1/conversations/01CD"
+          [200, envelope({ "conversation_uuid" => "01CD", "type" => "direct", "members" => [] })]
+        end
+      end
+
+      group = client.open_conversation("01AB")
+      assert_kind_of GroupConversation, group
+      assert_equal "01AB", group.id
+      assert_equal "Team", group.title
+
+      direct = client.open_conversation("01CD")
+      assert_kind_of DirectConversation, direct
+      assert_equal "01CD", direct.id
+    end
+
+    def test_group_handle_carries_group_operations
+      client = with_server do |req|
+        case req.path
+        when "/api/v1/group"
+          [201, envelope({ "id" => "01AC", "kind" => "group" })]
+        when "/api/v1/conversations/01AC/members"
+          [200, envelope({ "conversation_uuid" => "01AC", "type" => "group", "members" => [] })]
+        when "/api/v1/conversations/01AC/members/uuid-carol"
+          [200, envelope({ "conversation_uuid" => "01AC", "type" => "group", "members" => [] })]
+        when "/api/v1/conversations/01AC"
+          [200, envelope({ "conversation_uuid" => "01AC", "type" => "group", "members" => [] })]
+        end
+      end
+
+      group = client.create_group(member_uuids: ["uuid-bob"], title: "Team")
+      group.add_members(["uuid-carol"])
+      group.remove_members(["uuid-carol"])
+      assert_equal({ "conversation_uuid" => "01AC", "type" => "group", "members" => [] }, group.details)
+      assert_equal 4, @server.requests.size
+    end
+
+    def test_handle_delegates_to_client_calls
+      client = with_server do |req|
+        case req.path
+        when "/api/v1/conversations"
+          [201, envelope({ "id" => "01AB", "kind" => "direct" })]
+        when "/api/v1/messages"
+          [201, envelope(msg(1))]
+        when "/api/v1/conversations/01AB/messages?after_sequence=0&limit=100"
+          [200, envelope([msg(1)])]
+        end
+      end
+
+      direct = client.create_direct("uuid-bob")
+      message = direct.send_message("hi")
+      assert_equal "01AB", message.conversation_id
+      key = @server.requests[1].headers["idempotency-key"]
+      refute_nil key, "handle send carries an idempotency key"
+
+      history = direct.each_message.to_a
+      assert_equal [1], history.map(&:sequence)
+      assert_equal "/api/v1/conversations/01AB/messages?after_sequence=0&limit=100",
+                   @server.requests[2].path
+    end
+
+    def test_handle_list_messages_forwards_paging
+      client = with_server do |req|
+        case req.path
+        when "/api/v1/conversations"
+          [201, envelope({ "id" => "01AB", "kind" => "direct" })]
+        when "/api/v1/conversations/01AB/messages?after_sequence=7&limit=3"
+          [200, envelope([])]
+        end
+      end
+
+      direct = client.create_direct("uuid-bob")
+      direct.list_messages(after_sequence: 7, limit: 3)
+      assert_equal "/api/v1/conversations/01AB/messages?after_sequence=7&limit=3",
+                   @server.requests[1].path
     end
 
     def test_messages_sends_sequence_query
@@ -107,7 +201,7 @@ module AirwayIM
         assert_equal "/api/v1/conversations/01AB/messages?after_sequence=42&limit=10", req.path
         [200, envelope([])]
       end
-      assert_equal [], client.messages("01AB", after_sequence: 42, limit: 10)
+      assert_equal [], client.list_messages("01AB", after_sequence: 42, limit: 10)
     end
 
     def test_messages_without_options_has_no_query
@@ -115,7 +209,7 @@ module AirwayIM
         assert_equal "/api/v1/conversations/01AB/messages", req.path
         [200, envelope([])]
       end
-      client.messages("01AB")
+      client.list_messages("01AB")
     end
 
     def test_each_message_pages_until_short_page
@@ -143,7 +237,7 @@ module AirwayIM
       assert_equal [], client.each_message("01AB", after_sequence: 99).to_a
     end
 
-    def test_send_message_generates_idempotency_key
+    def test_send_group_message_generates_idempotency_key
       message = { "id" => "01M1", "sequence" => 1, "content" => "hi" }
       client = with_server do |req|
         assert_equal "POST", req.method
@@ -154,10 +248,10 @@ module AirwayIM
                        "content_type" => "text/markdown" }, JSON.parse(req.body))
         [201, envelope(message)]
       end
-      assert_equal message, client.send_message("01AB", "hi")
+      assert_equal message, client.send_group_message("01AB", "hi")
     end
 
-    def test_send_message_retries_transport_failure_with_same_key
+    def test_send_group_message_retries_transport_failure_with_same_key
       attempts = 0
       client = with_server do |req|
         attempts += 1
@@ -165,33 +259,33 @@ module AirwayIM
         [201, envelope({ "id" => "01M1", "sequence" => 1 })]
       end
 
-      message = client.send_message("01AB", "hi")
+      message = client.send_group_message("01AB", "hi")
       assert_equal "01M1", message["id"]
       assert_equal 2, attempts
       assert_equal @server.requests.map { |r| r.headers["idempotency-key"] }.uniq.size, 1
     end
 
-    def test_send_message_does_not_retry_http_errors
+    def test_send_group_message_does_not_retry_http_errors
       client = with_server do |_req|
         [409, envelope(nil, code: 11_002, message: "Idempotency key was reused with a different request")]
       end
-      error = assert_raises(Error) { client.send_message("01AB", "hi") }
+      error = assert_raises(Error) { client.send_group_message("01AB", "hi") }
       assert_equal 11_002, error.code
       assert_equal 409, error.status
       assert_equal 1, @server.requests.size
     end
 
-    def test_send_message_honors_explicit_key_and_content_type
+    def test_send_group_message_honors_explicit_key_and_content_type
       client = with_server do |req|
         assert_equal "my-key", req.headers["idempotency-key"]
         assert_equal({ "conversation_id" => "01AB", "content" => "hi",
                        "content_type" => "text/plain" }, JSON.parse(req.body))
         [201, envelope({})]
       end
-      client.send_message("01AB", "hi", content_type: "text/plain", idempotency_key: "my-key")
+      client.send_group_message("01AB", "hi", content_type: "text/plain", idempotency_key: "my-key")
     end
 
-    def test_send_message_returns_message_with_reader_methods
+    def test_send_group_message_returns_message_with_reader_methods
       payload = { "id" => "01M1", "conversation_id" => "01AB", "sequence" => 1,
                   "content" => "hi", "content_type" => "text/markdown",
                   "created_at" => "2026-01-01T00:00:00Z",
@@ -201,7 +295,7 @@ module AirwayIM
         [201, envelope(payload)]
       end
 
-      message = client.send_message("01AB", "hi")
+      message = client.send_group_message("01AB", "hi")
       assert_kind_of Message, message
       assert_kind_of Hash, message
       assert_equal "01M1", message.id
@@ -222,7 +316,7 @@ module AirwayIM
       client = with_server do |_req|
         [200, envelope([msg(1), msg(2)])]
       end
-      list = client.messages("01AB")
+      list = client.list_messages("01AB")
       assert_equal %w[01M1 01M2], list.map(&:id)
       assert_equal [1, 2], list.map(&:sequence)
       assert_equal "alice", list.first.sender.username

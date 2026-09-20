@@ -14,9 +14,12 @@ module AirwayIM
   #   )
   #
   # All methods return the envelope's `data` (a Hash or Array) and raise
-  # AirwayIM::Error on failure. Message responses come back as an
-  # AirwayIM::Message — a Hash subclass with reader methods, so
-  # message["id"], message.id, and message.sender.uuid all work.
+  # AirwayIM::Error on failure. Conversation-getters return
+  # AirwayIM::DirectConversation / AirwayIM::GroupConversation objects — one
+  # object per conversation carrying its id and kind (plus title on groups).
+  # Message responses come back as an AirwayIM::Message — a Hash subclass
+  # with reader methods, so message["id"], message.id, and
+  # message.sender.uuid all work.
   class Client
     DEFAULT_CONTENT_TYPE = "text/markdown"
 
@@ -54,58 +57,74 @@ module AirwayIM
       get("/api/v1/conversations", query: { type: "group" })
     end
 
-    # Create or resolve a conversation. kind: "direct" (get-or-create, may
-    # return an existing conversation) or "group" (always creates). member_uuids
-    # lists the *other* users by their stable identity uuid; the authenticated
-    # user must not be included.
-    def create_conversation(kind:, member_uuids:, title: nil)
-      body = { kind: kind, member_uuids: member_uuids }
-      body[:title] = title unless title.nil?
-      post("/api/v1/conversations", body: body)
-    end
-
     # Get-or-create the direct conversation with one other user, identified
-    # by their uuid.
+    # by their uuid. Returns a DirectConversation object.
     def create_direct(other_uuid)
-      create_conversation(kind: "direct", member_uuids: [other_uuid])
+      conversation = create_conversation(kind: "direct", member_uuids: [other_uuid])
+      DirectConversation.new(self, conversation.fetch("id"))
     end
 
-    # The direct conversation with one other user, identified by their uuid.
-    # Read-only: returns nil when none exists yet (create_direct get-or-creates
-    # instead). Combine with messages/each_message to poll and display the
-    # history with that user.
-    def direct_conversation(other_uuid)
-      get("/api/v1/conversations/direct/#{Util.escape_segment(other_uuid)}")
+    # The direct conversation with one other user, identified by their uuid,
+    # as a DirectConversation object. Read-only: returns nil when none exists
+    # yet (create_direct get-or-creates instead). Combine with
+    # list_messages/each_message to poll and display the history with that user.
+    def get_direct(other_uuid)
+      conversation = get("/api/v1/conversations/direct/#{Util.escape_segment(other_uuid)}")
+      DirectConversation.new(self, conversation.fetch("id"))
     rescue Error => e
       raise unless e.code == 11001
 
       nil
     end
 
-    # Create a new group; the authenticated user becomes its owner.
+    # Create a new group; the authenticated user becomes its owner. Returns
+    # a GroupConversation object carrying the creation-time title.
     def create_group(member_uuids:, title: nil)
       body = { member_uuids: member_uuids }
       body[:title] = title unless title.nil?
-      post("/api/v1/group", body: body)
+      conversation = post("/api/v1/group", body: body)
+      GroupConversation.new(self, conversation.fetch("id"), title)
     end
 
     # Conversation kind plus active members with roles.
-    def conversation(uuid)
-      get("/api/v1/conversations/#{Util.escape_segment(uuid)}")
+    #
+    # @api private Internal support for open_conversation and
+    #   Conversation#details; read details via Conversation#details instead.
+    def get_conversation(conversation_id)
+      get("/api/v1/conversations/#{Util.escape_segment(conversation_id)}")
+    end
+
+    # Open any conversation by id as a conversation object (e.g. one learned from a
+    # message): resolves kind and title from a details lookup.
+    def open_conversation(conversation_id)
+      details = get_conversation(conversation_id)
+      case details["type"]
+      when "group"
+        GroupConversation.new(self, conversation_id, details["title"])
+      when "direct"
+        DirectConversation.new(self, conversation_id)
+      else
+        Conversation.new(self, conversation_id, details["type"])
+      end
     end
 
     # Add members (identified by uuid) to a group (owner/admin). Idempotent
     # for already-active members.
-    def add_members(uuid, member_uuids)
-      post("/api/v1/conversations/#{Util.escape_segment(uuid)}/members",
-           body: { member_uuids: member_uuids })
+    def add_members(conversation_id, member_conversation_ids)
+      post("/api/v1/conversations/#{Util.escape_segment(conversation_id)}/members",
+           body: { member_conversation_ids: member_conversation_ids })
     end
 
-    # Remove one member (identified by uuid) from a group (owner/admin; cannot
-    # remove self or the owner). Idempotent when the user is not an active
-    # member.
-    def remove_member(uuid, user_uuid)
-      delete("/api/v1/conversations/#{Util.escape_segment(uuid)}/members/#{Util.escape_segment(user_uuid)}")
+    # Remove members (identified by conversation_id) from a group (owner/admin; cannot
+    # remove self or the owner). Idempotent for members who are not active.
+    # Returns the details after the last removal (the current details for an
+    # empty list).
+    def remove_members(conversation_id, user_conversation_ids)
+      details = user_conversation_ids.empty? ? get_conversation(conversation_id) : nil
+      user_conversation_ids.each do |user_conversation_id|
+        details = remove_member(conversation_id, user_conversation_id)
+      end
+      details
     end
 
     # ---- Messages ----
@@ -114,23 +133,23 @@ module AirwayIM
     # reconnect synchronization. limit: 1-200, the backend falls back to 100
     # outside that range. Returns Message objects (Hash subclass with reader
     # methods, e.g. message.sequence).
-    def messages(uuid, after_sequence: nil, limit: nil)
+    def list_messages(conversation_id, after_sequence: nil, limit: nil)
       query = { after_sequence: after_sequence, limit: limit }
-      get("/api/v1/conversations/#{Util.escape_segment(uuid)}/messages", query: query)
+      get("/api/v1/conversations/#{Util.escape_segment(conversation_id)}/messages", query: query)
         .map { |row| Message.new(row) }
     end
 
     # Auto-paging enumerator over the conversation history in ascending
     # sequence order; stops when a page comes back short or empty.
     #
-    #   im.each_message(uuid, after_sequence: 42).each { |msg| ... }
-    def each_message(uuid, after_sequence: 0, page_size: 100, &block)
+    #   im.each_message(conversation_id, after_sequence: 42).each { |msg| ... }
+    def each_message(conversation_id, after_sequence: 0, page_size: 100, &block)
       page_size = 200 if page_size > 200
-      return enum_for(:each_message, uuid, after_sequence: after_sequence, page_size: page_size) unless block
+      return enum_for(:each_message, conversation_id, after_sequence: after_sequence, page_size: page_size) unless block
 
       cursor = after_sequence
       loop do
-        page = messages(uuid, after_sequence: cursor, limit: page_size)
+        page = list_messages(conversation_id, after_sequence: cursor, limit: page_size)
         break if page.empty?
 
         page.each { |message| yield message }
@@ -139,11 +158,22 @@ module AirwayIM
       end
     end
 
-    # Send a message by conversation id. A random Idempotency-Key is
-    # generated per call and reused across network-failure retries, so retry
-    # storms can never duplicate a message; pass idempotency_key to control
-    # it (1-128 chars, reuse only for the same logical request). Returns a
-    # Message object (Hash subclass with reader methods, e.g. message.id).
+    # Send a message to a group conversation by id. A random Idempotency-Key
+    # is generated per call and reused across network-failure retries, so
+    # retry storms can never duplicate a message; pass idempotency_key to
+    # control it (1-128 chars, reuse only for the same logical request).
+    # Returns a Message object (Hash subclass with reader methods, e.g.
+    # message.id).
+    def send_group_message(conversation_id, content, content_type: DEFAULT_CONTENT_TYPE, idempotency_key: nil, retries: 1)
+      body = { conversation_id: conversation_id, content: content, content_type: content_type }
+      Message.new(post_message("/api/v1/messages", body, idempotency_key: idempotency_key, retries: retries))
+    end
+
+    # Send a message by conversation id.
+    #
+    # @api private Internal support for Conversation#send_message and
+    #   send_direct_message; use send_group_message / send_direct_message /
+    #   Conversation#send_message instead.
     def send_message(conversation_id, content, content_type: DEFAULT_CONTENT_TYPE, idempotency_key: nil, retries: 1)
       body = { conversation_id: conversation_id, content: content, content_type: content_type }
       Message.new(post_message("/api/v1/messages", body, idempotency_key: idempotency_key, retries: retries))
@@ -151,9 +181,9 @@ module AirwayIM
 
     # Send a direct message to one other user, identified by their uuid:
     # get-or-create the direct conversation, then send. Same idempotency
-    # semantics as send_message.
+    # semantics as send_group_message.
     def send_direct_message(other_uuid, content, content_type: DEFAULT_CONTENT_TYPE, idempotency_key: nil, retries: 1)
-      conversation = create_direct(other_uuid)
+      conversation = create_conversation(kind: "direct", member_uuids: [other_uuid])
       send_message(conversation.fetch("id"), content,
                    content_type: content_type, idempotency_key: idempotency_key, retries: retries)
     end
@@ -181,6 +211,23 @@ module AirwayIM
     end
 
     private
+
+    # Remove one member (identified by uuid) from a group (owner/admin; cannot
+    # remove self or the owner). Idempotent when the user is not an active
+    # member. Single-member DELETE endpoint — remove_members loops over it.
+    def remove_member(conversation_id, user_conversation_id)
+      delete("/api/v1/conversations/#{Util.escape_segment(conversation_id)}/members/#{Util.escape_segment(user_conversation_id)}")
+    end
+
+    # Create or resolve a conversation. kind: "direct" (get-or-create, may
+    # return an existing conversation) or "group" (always creates). member_uuids
+    # lists the *other* users by their stable identity uuid; the authenticated
+    # user must not be included.
+    def create_conversation(kind:, member_uuids:, title: nil)
+      body = { kind: kind, member_uuids: member_uuids }
+      body[:title] = title unless title.nil?
+      post("/api/v1/conversations", body: body)
+    end
 
     def get(path, query: nil)
       request(:get, path, query: query)

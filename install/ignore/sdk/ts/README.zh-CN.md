@@ -1,9 +1,9 @@
 # airway-im-sdk-ts
 
 [Airway IM](https://github.com/daqing/airway-im-plugin) 的 JS/TS SDK，覆盖
-微信小程序与浏览器（Vue / React / 普通网页）：把后端的 REST API 与 WebSocket
-网关协议封装成一套开箱即用的 TypeScript 接口，客户端无需自己实现凭证、
-网关首帧认证、心跳、断线重连和序列补同步等协议代码。
+微信小程序与浏览器（Vue / React / 普通网页）：把后端的 REST API、WebSocket
+网关协议与服务端对服务端的凭证签发接口封装成一套开箱即用的 TypeScript 接口，
+客户端无需自己实现凭证、网关首帧认证、心跳、断线重连和序列补同步等协议代码。
 
 零运行时依赖，输出 CommonJS + ESM 双格式（`dist/cjs` / `dist/esm`），同时兼容
 微信开发者工具「构建 npm」、Taro / uni-app 以及 Vue / React 等浏览器框架。
@@ -12,6 +12,10 @@
 
 - **REST 全量封装** — 个人资料、会话（单聊 get-or-create / 群聊 / 成员管理）、
   消息（历史、发送、幂等重试）、文件上传，全部强类型并自动解 `{code,data,message}` 信封。
+- **会话对象** — `createDirect` / `getDirect` /
+  `createGroup` / `openConversation` 返回每个会话一个的对象
+  （`DirectConversation` / `GroupConversation`），事件按会话作用域收发、自带
+  `send()` / `history()`；类型就在对象上，首个 message 监听器自动开始跟踪。
 - **实时网关** — 自动完成 `{"cmd":"auth"}` 首帧认证、应用层心跳（默认 25s）、
   指数退避断线重连（0.5s→10s）、按 `event_id` 去重。
 - **同步引擎** — 维护每个会话的 `sequence` 游标：收到 `message.created` 事件自动
@@ -19,7 +23,9 @@
   不漏**地通过 `message` 事件送达；游标可持久化到本地存储，冷启动只拉增量。
 - **凭证续期** — 凭证过期（HTTP 401/10001 或网关认证失败）时自动回调
   `getCredential` 换新凭证并恢复，业务代码无感。
-- **小程序友好** — 默认适配器基于 `wx.request` / `wx.connectSocket` /
+- **服务端凭证签发** — Node 后端通过 SDK 的 `InternalClient` 获取凭证
+  （服务端对服务端、仅限内网；绝不要打包进客户端代码），无需手写 HTTP 调用。
+- **小程序友好** — 内置的 `wechatAdapter` 基于 `wx.request` / `wx.connectSocket` /
   `wx.uploadFile` / `wx.*StorageSync`，并自动在 `wx.onAppShow` 时恢复连接
   （小程序切后台会杀掉 socket）。
 - **浏览器支持** — 内置 `browserAdapter`（fetch / WebSocket / FormData /
@@ -46,6 +52,31 @@ SDK 不含登录逻辑，也不负责身份认证。用户先在你的平台完�
 `X-IM-Internal-Secret`），再把返回的凭证连同你自己的会话 token 一起在登录
 响应里下发给小程序（24 小时有效，过期前重新签发）。
 
+Node 后端里这次调用用 SDK 的 `InternalClient` 一步完成（仅限服务端，
+绝不要打包进客户端代码）：
+
+```ts
+import { InternalClient } from "airway-im-sdk-ts";
+
+const internal = new InternalClient({
+  internalUrl: "http://127.0.0.1:1906",            // 内部监听地址，仅限内网
+  internalSecret: process.env.IM_INTERNAL_SECRET!, // 该部署的 IM_INTERNAL_SECRET
+});
+
+const minted = await internal.mintCredential({
+  uuid: user.uuid,             // 来自你自己的用户表
+  name: user.username,
+  nickname: user.displayName,  // 可选；仅在传入时写入
+  ttlSeconds: 86_400,          // 可选；默认 24 小时，0 表示永不过期
+});
+
+minted.credential;  // "im1.…" — 随登录响应下发给客户端
+minted.expiresAt;   // RFC 3339 UTC，到期重签时间；ttlSeconds 为 0 时为 null
+```
+
+其他语言的后端直接走普通 HTTP 调用同一端点；完整契约见下文 API 一览中的
+「凭证签发接口」小节。
+
 两个必须分清的点：
 
 - 凭证永远由**你的后端**获取并下发，客户端从不向 IM 服务器索取凭证：IM
@@ -70,32 +101,35 @@ SDK 不含登录逻辑，也不负责身份认证。用户先在你的平台完�
 ### 2. 小程序内初始化并收发消息
 
 ```ts
-import { createIM } from "airway-im-sdk-ts";
+import { createClient, wechatAdapter } from "airway-im-sdk-ts";
 
-const im = createIM({
+const im = createClient({
   apiUrl: "https://im.example.com",   // IM 后端（:1905），必须是 https
-  wsUrl: "wss://im.example.com",      // WebSocket 网关（:1910），必须是 wss
+  wsUrl: "wss://im.example.com",      // WebSocket 网关（:1910）；SDK 实际连接 <wsUrl>/ws
   credential: wx.getStorageSync("im-credential"),
+  adapter: wechatAdapter(),           // 必填：浏览器/Node 传 browserAdapter()
   getCredential: () =>                // 凭证失效时自动调用
     fetchNewCredentialFromYourBackend(),
 });
 
-// 监听消息：有序、去重、自动补洞（含掉线期间错过的）
-im.on("message", (msg, source) => {
-  console.log(`[${source}]`, msg.sender.nickname, msg.content);
-});
 im.on("status", (s) => console.log("connection:", s));
-
 im.connect();
 
-// 首次打开某个会话：拉历史并开始跟踪该会话的实时同步
-const { id } = await im.createDirect(otherUserUuid);
-const history = await im.history(id);   // 返回按 sequence 升序的全部消息
+// 单聊：类型就在对象上
+const direct = await im.createDirect(otherUserUUID);   // get-or-create
+direct.on("message", (msg, source) => {
+  // 有序、去重、自动补洞（含掉线期间错过的）；首个监听器自动开始跟踪
+  console.log(`[${source}]`, msg.sender.nickname, msg.content);
+});
+const history = await direct.history();   // 目前为止的离线消息，按 sequence 升序
 
 // 发送（SDK 自动生成 Idempotency-Key，网络失败自动用同一 key 重试，不会重发）
-const sent = await im.sendMessage(id, "你好", { contentType: "text/plain" });
-// 或一步到位：get-or-create 单聊会话后直接发送
-await im.sendDirectMessage(otherUserUuid, "你好");
+await direct.send("你好", { contentType: "text/plain" });
+
+// 群聊：同样的模型
+const group = await im.createGroup("Team", [otherUserUUID]);
+group.on("message", (msg) => console.log(msg.content));
+await group.send("hello");
 ```
 
 ### 3. 页面生命周期建议
@@ -112,15 +146,15 @@ App({
 
 ## API 一览
 
-### `createIM(options)`
+### `createClient(options)`
 
 | 选项 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `apiUrl` | ✓ | — | IM 后端地址（:1905），生产必须 https |
-| `wsUrl` | | — | 网关地址（:1910）；不传则只用 REST，不连实时 |
+| `wsUrl` | | — | 网关 base URL（`:1910`）——只传主机部分，**不要**自带路径；SDK 会自动追加 `/ws`（`wsUrl: "ws://localhost:1910"` → 默认网关端点 `ws://localhost:1910/ws`；反代终结 TLS 后用 `wss://…`）。不传则只用 REST，不连实时 |
 | `credential` | ✓ | — | 业务后端签发的用户凭证 |
 | `getCredential` | | — | `() => Promise<string>`，凭证失效时换新 |
-| `adapter` | | 微信适配器 | 平台适配器；浏览器传 `browserAdapter()`（见下文） |
+| `adapter` | ✓ | — | 平台适配器：小程序传 `wechatAdapter()`，浏览器/Node 传 `browserAdapter()`；必填、不设默认值，缺失时 `createClient` 直接抛异常 |
 | `timeoutMs` | | `15000` | REST 请求超时 |
 | `pingIntervalMs` | | `25000` | 应用层心跳间隔，`0` 关闭 |
 | `persistSequences` | | `true` | 持久化各会话 sequence 游标 |
@@ -132,26 +166,47 @@ App({
 | --- | --- |
 | `im.me()` | `GET /api/v1/me` |
 | `im.listGroups()` | `GET /api/v1/conversations?type=group` |
-| `im.createConversation({kind, memberUuids, title?})` | `POST /api/v1/conversations` |
-| `im.createDirect(otherUserUuid)` | 同上（direct get-or-create） |
-| `im.getDirectConversation(otherUserUuid)` | `GET /api/v1/conversations/direct/:user_uuid`（没有则返回 null） |
-| `im.createGroup(title, memberUuids)` | `POST /api/v1/group` |
-| `im.getConversation(uuid)` | `GET /api/v1/conversations/:uuid` |
-| `im.addMembers(conversationId, memberUuids)` | `POST .../members` |
-| `im.removeMember(conversationId, userUuid)` | `DELETE .../members/:user_uuid` |
+| `im.createDirect(otherUserUUID)` | 单聊 get-or-create；返回 `DirectConversation` 会话对象 |
+| `im.getDirect(otherUserUUID)` | 已有单聊的会话对象（没有则返回 null） |
+| `im.createGroup(title, memberUUIDs)` | `POST /api/v1/group`；返回 `GroupConversation` 会话对象 |
+| `im.openConversation(id)` | 按会话 id 打开会话对象（注册表已知直接返回，否则拉一次 REST） |
+| `im.addMembers(conversationId, memberUUIDs)` | `POST .../members` |
+| `im.removeMembers(conversationId, userUUIDs: string[])` | `DELETE .../members/:user_uuid` |
 | `im.history(conversationId, {fromSequence?, limit?})` | 拉历史 + 开始跟踪同步 |
 | `im.listMessages(conversationId, {afterSequence?, limit?})` | `GET .../messages`（原始分页） |
-| `im.sendMessage(conversationId, content, opts?)` | `POST /api/v1/messages` |
-| `im.sendDirectMessage(otherUserUuid, content, opts?)` | Get-or-create 单聊会话后走 `POST /api/v1/messages` |
+| `im.sendGroupMessage(conversationId, content, opts?)` | `POST /api/v1/messages` |
+| `im.sendDirectMessage(otherUserUUID, content, opts?)` | Get-or-create 单聊会话后走 `POST /api/v1/messages` |
 | `im.uploadFile(filePath \| File, dir?)` | `POST /api/v1/storage` |
 | `im.storageUrl(key)` | 文件下载地址（配 `<image>` / `wx.downloadFile`） |
 
-`sendMessage` 的 `opts`：`contentType`（`text/markdown` 默认 / `text/plain`）、
+`sendGroupMessage` 的 `opts`：`contentType`（`text/markdown` 默认 / `text/plain`）、
 `idempotencyKey`（默认自动生成）、`retries`（网络失败重试次数，默认 1）。
+
+### 会话对象（`DirectConversation` / `GroupConversation`）
+
+会话对象即"每个会话一个对象"——类型就在对象上，同一会话永远返回同一个
+对象。会话对象上的事件同样会出现在门面的全局流里（见下），反之亦然。
+
+| 成员 | 说明 |
+| --- | --- |
+| `id` / `kind` | 会话 id；`"direct"` 或 `"group"` |
+| `on(event, listener)` | `message` `(msg, "history"\|"realtime")`、`message.updated` `(msg)`；群对象还有 `members.added` / `members.removed`。首个 `message` 监听器自动开始跟踪（按游标补历史，之后走实时） |
+| `history({fromSequence?, limit?})` | 等待积压拉完；以 `"history"` 来源触发 `message` |
+| `send(content, opts?)` | 向该会话发送（幂等/重试语义同 `sendGroupMessage`） |
+| `lastSequence()` / `forget()` | 同步游标；丢弃该会话的全部同步状态 |
+| `details()` | 会话类型 + 成员与角色，实时来自 API |
+| 群对象独有：`title` | 创建时的标题 |
+| 群对象独有：`addMembers(uuids)` / `removeMembers(uuid)` | 成员管理；成员与角色列表 |
+
+```ts
+const group = await im.createGroup("Team", [aliceUuid, bobUuid]);
+group.on("message", (msg) => renderGroupMessage(msg));
+await group.send("hello");
+```
 
 ### Message 对象（`ChatMessage`）
 
-`sendMessage`、`sendDirectMessage`、`listMessages`、`history` 以及实时
+`sendGroupMessage`、`sendDirectMessage`、`listMessages`、`history` 以及实时
 `message` 事件携带的都是同一个 `ChatMessage` 结构：
 
 | 字段 | 类型 | 说明 |
@@ -171,7 +226,10 @@ App({
 消息（`id`、`sequence` 都不变）；实时事件的去重与补洞 SDK 已自动处理。
 `sender` 反映作者当前资料，不是发送时刻的快照。
 
-### 实时事件（`im.on(name, handler)`）
+### 全局流（`im.on(name, handler)`）
+
+会话对象是按窗口收发的首选 API；门面同时暴露一条全局流，适合未读角标、
+统一收件箱这类场景：
 
 | 事件 | 载荷 | 说明 |
 | --- | --- | --- |
@@ -187,6 +245,9 @@ App({
 `im.connectionStatus` / `im.setCredential(cred)` / `im.lastSequence(conversationId)` /
 `im.forgetConversation(conversationId)`（如被踢出群后丢弃该会话的同步游标）。
 
+全局 `message` 事件只带 `conversation_id`——线路上没有会话类型。需要类型
+或按会话订阅时，用 `im.openConversation(msg.conversation_id)` 打开会话对象。
+
 ### 错误处理
 
 所有 REST 错误抛出 `IMError`（`err.code` 信封业务码、`err.status` HTTP 状态码，
@@ -196,7 +257,7 @@ App({
 import { IMError, ErrorCode } from "airway-im-sdk-ts";
 
 try {
-  await im.sendMessage(id, "hi");
+  await im.sendGroupMessage(id, "hi");
 } catch (err) {
   if (err instanceof IMError) {
     if (err.isAuthError) /* 10001：凭证无效/过期，等待自动续期或重新登录 */;
@@ -209,18 +270,53 @@ try {
 完整错误码：`10000` 内部错误、`10001` 凭证无效、`10003` 请求非法、
 `10005` 无权限、`11001` 会话不存在、`11002` 幂等 key 复用且请求不同。
 
+### 凭证签发接口（服务端之间）
+
+TS/Node 后端请使用 SDK 的 `InternalClient`（见快速开始第 1 步）；该端点本身
+就是普通 HTTP，任意语言的后端都可以直接调用。
+
+`POST /internal/v1/credentials`，作用于 IM 服务的内部监听地址（默认
+`127.0.0.1:1906`，仅限内网），以 `X-IM-Internal-Secret` 头认证（值为该部署
+的 `IM_INTERNAL_SECRET`）。该接口只允许你的后端调用——浏览器页面、小程序
+绝不能直接调用：能签发凭证的一方，就能冒充任意用户。
+
+首次签发时，用户会以你提供的 `uuid` 在 IM 侧注册（之后客户端调
+`createDirect` / `sendDirectMessage` 用的就是这个 uuid）；签出的凭证携带
+该用户当前的 `token_version`，因此通过管理端 API 吊销该用户后，此前签发的
+所有凭证立即失效。
+
+请求体（JSON）：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `uuid` | ✓ | 你自己用户表里的稳定用户 ID，1–64 字符 |
+| `name` | ✓ | 账号名，1–64 字符 |
+| `nickname` | | 显示昵称；仅在传入时写入，不传不会覆盖之前存过的资料 |
+| `avatar_url` | | 头像 URL，最长 2048 字符；同样仅在传入时写入 |
+| `ttl_seconds` | | 凭证有效期（秒）；默认 `86400`（24 小时），上限 `2592000`（30 天），`0` 表示永不过期 |
+
+成功返回 `{code: 0, data: {credential, expires_at?}}`：`credential` 即签好
+的 `im1.<payload>.<sig>` 凭证，客户端以 `Authorization: Bearer`（REST）或
+首条网关 `auth` 命令出示；`expires_at`（RFC 3339 UTC）在 `ttl_seconds` 为
+`0` 时省略。
+
+错误码：`10003` JSON 非法、`uuid`/`name` 缺失或超长、`ttl_seconds` 越界；
+`10005` 在这里表示 `X-IM-Internal-Secret` 缺失或不匹配（不是公开 API 的
+无权限）；`10006` Airway 部署未配置 `IM_AUTH_SECRET`、无法签发；
+`10000` 内部错误。
+
 ## 消息可靠性模型
 
 后端保证每个会话内 `sequence` 单调递增，投递是 **at-least-once**。SDK 的同步引擎
 负责：按 `event_id` / `message_id` 去重、按 `sequence` 排序、发现缺口时用
 `after_sequence` 补齐。业务侧只需：
 
-1. 用 `im.history(id)` 初始化会话（开始跟踪）；
+1. 打开会话——会话对象的首个 `on("message")`（或 `history()`）即开始跟踪；
 2. 在 `message` 事件里追加渲染（重复消息按 `msg.id` 幂等处理即可）；
-3. 发送以 `sendMessage` 的返回值为准立即上屏，实时回包相同消息按 `id` 去重。
+3. 发送以 `send()` 的返回值为准立即上屏，实时回包相同消息按 `id` 去重。
 
-未被 `history()` 跟踪的会话不会自动拉消息（避免整段历史刷下来），
-可通过 `event` 事件自行处理未读角标等场景。
+未跟踪的会话不会自动拉消息（避免整段历史刷下来），可通过全局 `event`
+事件自行处理未读角标等场景。
 
 ## 小程序域名配置
 
@@ -230,17 +326,19 @@ try {
 - **socket 合法域名**：`wss://im.example.com`（实时网关）
 
 本地调试可在开发者工具中勾选「不校验合法域名」并用 `http://127.0.0.1:1905` /
-`ws://127.0.0.1:1910`。
+`ws://127.0.0.1:1910`（SDK 实际连接的网关端点是 `ws://127.0.0.1:1910/ws`；
+网关本身只提供明文 WS，`wss` 需由反向代理终结 TLS）。
 
 ## 在 Vue / React / 普通网页中使用
 
-SDK 核心与平台无关；小程序端默认使用 `wechatAdapter`，浏览器端显式传入内置的
-`browserAdapter`（fetch / WebSocket / FormData / localStorage）即可：
+SDK 核心与平台无关，必须显式传适配器、没有默认值：小程序传 `wechatAdapter()`，
+浏览器/Node 传内置的 `browserAdapter()`（fetch / WebSocket / FormData /
+localStorage）：
 
 ```ts
-import { createIM, browserAdapter } from "airway-im-sdk-ts";
+import { createClient, browserAdapter } from "airway-im-sdk-ts";
 
-export const im = createIM({
+export const im = createClient({
   apiUrl: "https://im.example.com",
   wsUrl: "wss://im.example.com",
   credential: localStorage.getItem("im-credential") ?? "",

@@ -1,4 +1,4 @@
-/** Platform adapter for WeChat Mini Programs — the default when no adapter is passed. */
+/** Platform adapter for WeChat Mini Programs — pass it explicitly to createClient(). */
 export declare function wechatAdapter(): {
     http: {
         request(options: {

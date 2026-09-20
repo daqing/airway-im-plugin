@@ -1,19 +1,19 @@
 "use strict";
-// Default adapter for WeChat Mini Programs, built on wx.request /
+// Adapter for WeChat Mini Programs, built on wx.request /
 // wx.connectSocket / wx.uploadFile / wx.*StorageSync. The small local `wx`
 // declaration below keeps the SDK dependency-free; it covers only the surface
-// the SDK uses.
+// the SDK uses. Pass it explicitly: createClient({ adapter: wechatAdapter() }).
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.wechatAdapter = wechatAdapter;
 function getWx() {
     const g = globalThis;
     if (typeof g.wx !== "object" || g.wx === null) {
         throw new Error("wechatAdapter requires the WeChat Mini Program runtime (global wx). " +
-            "For other platforms, provide a custom adapter to createIM()/AirwayIM.");
+            "For other platforms, provide a custom adapter to createClient()/AirwayIM.");
     }
     return g.wx;
 }
-/** Platform adapter for WeChat Mini Programs — the default when no adapter is passed. */
+/** Platform adapter for WeChat Mini Programs — pass it explicitly to createClient(). */
 function wechatAdapter() {
     return {
         http: {

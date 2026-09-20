@@ -92,23 +92,23 @@ export class IMHttpClient {
         return this.request("POST", "/api/v1/conversations", {
             body: {
                 kind: input.kind,
-                member_uuids: input.memberUuids,
+                member_uuids: input.memberUUIDs,
                 ...(input.title !== undefined ? { title: input.title } : {}),
             },
         });
     }
     /** Get-or-create a direct conversation with one other user, by uuid. */
-    createDirect(otherUserUuid) {
-        return this.createConversation({ kind: "direct", memberUuids: [otherUserUuid] });
+    createDirect(otherUserUUID) {
+        return this.createConversation({ kind: "direct", memberUUIDs: [otherUserUUID] });
     }
     /**
      * The direct conversation with one other user by uuid, or null when none
      * exists yet (read-only; createDirect get-or-creates instead). Combine with
      * listMessages to poll and display the history with that user.
      */
-    async getDirectConversation(otherUserUuid) {
+    async getDirect(otherUserUUID) {
         try {
-            return await this.request("GET", `/api/v1/conversations/direct/${encodeURIComponent(otherUserUuid)}`);
+            return await this.request("GET", `/api/v1/conversations/direct/${encodeURIComponent(otherUserUUID)}`);
         }
         catch (err) {
             if (err instanceof IMError && err.code === ErrorCode.ConversationNotFound)
@@ -117,21 +117,36 @@ export class IMHttpClient {
         }
     }
     /** Create a new group; the authenticated user becomes its owner. */
-    createGroup(title, memberUuids) {
+    createGroup(title, memberUUIDs) {
         return this.request("POST", "/api/v1/group", {
-            body: { title, member_uuids: memberUuids },
+            body: { title, member_uuids: memberUUIDs },
         });
     }
-    getConversation(uuid) {
-        return this.request("GET", `/api/v1/conversations/${encodeURIComponent(uuid)}`);
+    getConversation(conversationId) {
+        return this.request("GET", `/api/v1/conversations/${encodeURIComponent(conversationId)}`);
     }
     /** Add members (by uuid) to a group (owner/admin; idempotent for already-active members). */
-    addMembers(conversationId, memberUuids) {
-        return this.request("POST", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members`, { body: { member_uuids: memberUuids } });
+    addMembers(conversationId, memberUUIDs) {
+        return this.request("POST", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members`, { body: { member_uuids: memberUUIDs } });
+    }
+    /**
+     * Remove members (by uuid) from a group (owner/admin; cannot remove self
+     * or the owner). Idempotent for members who are not active. Returns the
+     * details after the last removal (the current details for an empty list).
+     */
+    async removeMembers(conversationId, userUUIDs) {
+        if (userUUIDs.length === 0) {
+            return this.getConversation(conversationId);
+        }
+        let details;
+        for (const userUUID of userUUIDs) {
+            details = await this.removeMember(conversationId, userUUID);
+        }
+        return details;
     }
     /** Remove one member (by uuid) from a group (owner/admin; cannot remove self or the owner). */
-    removeMember(conversationId, userUuid) {
-        return this.request("DELETE", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userUuid)}`);
+    removeMember(conversationId, userUUID) {
+        return this.request("DELETE", `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userUUID)}`);
     }
     // ---- Messages ----
     /** Ordered message page after a sequence; use for history and reconnect sync. */
@@ -160,8 +175,8 @@ export class IMHttpClient {
      * get-or-create the direct conversation, then send. Same idempotency
      * semantics as sendMessage.
      */
-    async sendDirectMessage(otherUserUuid, content, options = {}) {
-        const conversation = await this.createDirect(otherUserUuid);
+    async sendDirectMessage(otherUserUUID, content, options = {}) {
+        const conversation = await this.createDirect(otherUserUUID);
         return this.sendMessage(conversation.id, content, options);
     }
     async postMessage(path, body, options) {

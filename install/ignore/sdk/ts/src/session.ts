@@ -7,13 +7,15 @@ import { IMHttpClient } from "./http.js";
 import type { SendMessageOptions } from "./http.js";
 import { GatewaySocket } from "./gateway.js";
 import { SyncEngine } from "./sync.js";
+import { DirectConversation, GroupConversation } from "./conversation.js";
+import type { Conversation } from "./conversation.js";
 import { IMError } from "./error.js";
-import { wechatAdapter } from "./wechat.js";
 import type {
   ChatMessage,
   ConnectionStatus,
-  Conversation,
+  ConversationSummary,
   ConversationDetails,
+  ConversationKind,
   GatewayEvent,
   UploadResult,
   User,
@@ -33,8 +35,13 @@ export interface AirwayIMOptions {
    * returned credential.
    */
   getCredential?: () => Promise<string>;
-  /** Platform adapter; defaults to the WeChat Mini Program adapter. */
-  adapter?: IMAdapter;
+  /**
+   * Platform adapter — required and never defaulted, so a program running in
+   * the wrong runtime fails loudly here instead of mysteriously later. Pass
+   * wechatAdapter() in WeChat Mini Programs, browserAdapter() in browsers and
+   * Node, or your own IMAdapter implementation.
+   */
+  adapter: IMAdapter;
   /** Per-request timeout in ms (default 15000). */
   timeoutMs?: number;
   /** Gateway application-level ping interval in ms; 0 disables (default 25000). */
@@ -47,13 +54,13 @@ export interface AirwayIMOptions {
 
 export interface MembersAddedInfo {
   conversationId: string;
-  addedUserUuids: string[];
+  addedUserUUIDs: string[];
   event: GatewayEvent;
 }
 
 export interface MembersRemovedInfo {
   conversationId: string;
-  removedUserUuid: string;
+  removedUserUUID: string;
   event: GatewayEvent;
 }
 
@@ -85,9 +92,36 @@ export class AirwayIM {
   private readonly listeners = new Map<EventName, Set<Listener<EventName>>>();
   private status: ConnectionStatus = "closed";
   private wantConnected = false;
+  /** conversation id → kind, remembered from every call/event that reveals it. */
+  private readonly conversationKinds = new Map<string, ConversationKind>();
+  /** conversation id → conversation object; the same object (with its listeners) is
+   * returned by every open/create call for that conversation. */
+  private readonly conversations = new Map<string, Conversation>();
+
+  private rememberKind(conversationId: string, kind: ConversationKind): void {
+    this.conversationKinds.set(conversationId, kind);
+  }
+
+  private conversationFor(id: string, kind: ConversationKind, title: string | null = null): Conversation {
+    const existing = this.conversations.get(id);
+    if (existing) return existing;
+    const conversation =
+      kind === "direct" ? new DirectConversation(this, id) : new GroupConversation(this, id, title);
+    this.conversations.set(id, conversation);
+    return conversation;
+  }
 
   constructor(options: AirwayIMOptions) {
-    this.adapter = options.adapter ?? wechatAdapter();
+    if (!options.adapter) {
+      // The type makes this unreachable from TypeScript; the guard is for
+      // plain-JS callers, where a missing adapter would otherwise surface as
+      // a confusing wx/browser error deep inside the first request.
+      throw new Error(
+        "createClient requires an explicit adapter: wechatAdapter() for WeChat Mini " +
+          "Programs, browserAdapter() for browsers and Node, or a custom IMAdapter.",
+      );
+    }
+    this.adapter = options.adapter;
     this.wsUrl = options.wsUrl;
     this.rest = new IMHttpClient({
       apiUrl: options.apiUrl,
@@ -108,9 +142,15 @@ export class AirwayIM {
       storage: options.persistSequences === false ? undefined : this.adapter.storage,
       handlers: {
         onMessages: (messages, source) => {
-          for (const message of messages) this.emit("message", message, source);
+          for (const message of messages) {
+            this.emit("message", message, source);
+            this.conversations.get(message.conversation_id)?.emitLocal("message", message, source);
+          }
         },
-        onMessageUpdated: (message) => this.emit("message.updated", message),
+        onMessageUpdated: (message) => {
+          this.emit("message.updated", message);
+          this.conversations.get(message.conversation_id)?.emitLocal("message.updated", message);
+        },
       },
     });
 
@@ -194,21 +234,29 @@ export class AirwayIM {
           .catch((err) => this.emit("error", err as Error));
         break;
       case "conversation.member_added":
+        // Member management is group-only server-side, so these events mark
+        // the conversation as a group in the kind registry.
+        this.rememberKind(event.conversation_id, "group");
         if (event.added_user_uuids?.length) {
-          this.emit("members.added", {
+          const info: MembersAddedInfo = {
             conversationId: event.conversation_id,
-            addedUserUuids: event.added_user_uuids,
+            addedUserUUIDs: event.added_user_uuids,
             event,
-          });
+          };
+          this.emit("members.added", info);
+          this.conversations.get(event.conversation_id)?.emitLocal("members.added", info);
         }
         break;
       case "conversation.member_removed":
+        this.rememberKind(event.conversation_id, "group");
         if (event.removed_user_uuid !== undefined) {
-          this.emit("members.removed", {
+          const info: MembersRemovedInfo = {
             conversationId: event.conversation_id,
-            removedUserUuid: event.removed_user_uuid,
+            removedUserUUID: event.removed_user_uuid,
             event,
-          });
+          };
+          this.emit("members.removed", info);
+          this.conversations.get(event.conversation_id)?.emitLocal("members.removed", info);
         }
         break;
       default:
@@ -258,36 +306,70 @@ export class AirwayIM {
     return this.rest.me();
   }
 
-  listGroups(): Promise<Conversation[]> {
-    return this.rest.listGroups();
+  listGroups(): Promise<ConversationSummary[]> {
+    return this.rest.listGroups().then((conversations) => {
+      for (const conversation of conversations) this.rememberKind(conversation.id, "group");
+      return conversations;
+    });
   }
 
-  createConversation(input: { kind: "direct" | "group"; memberUuids: string[]; title?: string }): Promise<Conversation> {
-    return this.rest.createConversation(input);
+
+  /** Get-or-create the direct (1:1) conversation with one user, by uuid. */
+  createDirect(otherUserUUID: string): Promise<DirectConversation> {
+    return this.rest.createDirect(otherUserUUID).then((conversation) => {
+      this.rememberKind(conversation.id, "direct");
+      return this.conversationFor(conversation.id, "direct") as DirectConversation;
+    });
   }
 
-  createDirect(otherUserUuid: string): Promise<Conversation> {
-    return this.rest.createDirect(otherUserUuid);
+  /**
+   * The existing direct conversation with one user, by uuid, as a
+   * DirectConversation —
+   * or null when none exists yet (createDirect get-or-creates instead).
+   */
+  getDirect(otherUserUUID: string): Promise<DirectConversation | null> {
+    return this.rest.getDirect(otherUserUUID).then((conversation) => {
+      if (!conversation) return null;
+      this.rememberKind(conversation.id, "direct");
+      return this.conversationFor(conversation.id, "direct") as DirectConversation;
+    });
   }
 
-  getDirectConversation(otherUserUuid: string): Promise<Conversation | null> {
-    return this.rest.getDirectConversation(otherUserUuid);
+  /** Create a group conversation; the authenticated user becomes its owner. */
+  createGroup(title: string | null, memberUUIDs: string[]): Promise<GroupConversation> {
+    return this.rest.createGroup(title, memberUUIDs).then((conversation) => {
+      this.rememberKind(conversation.id, "group");
+      return this.conversationFor(conversation.id, "group", conversation.title) as GroupConversation;
+    });
   }
 
-  createGroup(title: string | null, memberUuids: string[]): Promise<Conversation> {
-    return this.rest.createGroup(title, memberUuids);
+  /**
+   * Open any conversation by id as a conversation object (e.g. one learned
+   * from a "message" event or listGroups). The kind is answered from the
+   * registry when this instance already saw the conversation, otherwise
+   * fetched via REST once; rejects if the user cannot see the conversation.
+   */
+  async openConversation(conversationId: string): Promise<Conversation> {
+    const existing = this.conversations.get(conversationId);
+    if (existing) return existing;
+    let kind = this.conversationKinds.get(conversationId);
+    if (!kind) {
+      const details = await this.rest.getConversation(conversationId);
+      kind = details.type;
+      this.rememberKind(details.conversation_uuid, kind);
+    }
+    return this.conversationFor(conversationId, kind);
   }
 
-  getConversation(uuid: string): Promise<ConversationDetails> {
-    return this.rest.getConversation(uuid);
+  addMembers(conversationId: string, memberUUIDs: string[]): Promise<ConversationDetails> {
+    // Member management is group-only server-side.
+    this.rememberKind(conversationId, "group");
+    return this.rest.addMembers(conversationId, memberUUIDs);
   }
 
-  addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails> {
-    return this.rest.addMembers(conversationId, memberUuids);
-  }
-
-  removeMember(conversationId: string, userUuid: string): Promise<ConversationDetails> {
-    return this.rest.removeMember(conversationId, userUuid);
+  removeMembers(conversationId: string, userUUIDs: string[]): Promise<ConversationDetails> {
+    this.rememberKind(conversationId, "group");
+    return this.rest.removeMembers(conversationId, userUUIDs);
   }
 
   /**
@@ -319,19 +401,37 @@ export class AirwayIM {
   }
 
   /**
-   * Send a message. Resolves with the stored message; the local sequence
-   * tracker is updated so the sender's own message.created event does not
-   * trigger a redundant fetch. The message is also emitted via "message"
-   * only when it arrives back through realtime/sync (at-least-once) — handle
-   * the return value for immediate UI feedback.
+   * Send a message to a group conversation by id. Resolves with the stored
+   * message; the local sequence tracker is updated so the sender's own
+   * message.created event does not trigger a redundant fetch. The message is
+   * also emitted via "message" only when it arrives back through
+   * realtime/sync (at-least-once) — handle the return value for immediate UI
+   * feedback.
    */
-  async sendMessage(
+  async sendGroupMessage(
     conversationId: string,
     content: string,
     options: SendMessageOptions = {},
   ): Promise<ChatMessage> {
+    this.rememberKind(conversationId, "group");
     const message = await this.rest.sendMessage(conversationId, content, options);
     this.sync.track(conversationId, message.sequence);
+    return message;
+  }
+
+  /**
+   * Send a direct message to one other user, identified by their uuid:
+   * get-or-create the direct conversation, then send. Same idempotency
+   * semantics as sendGroupMessage.
+   */
+  async sendDirectMessage(
+    otherUserUUID: string,
+    content: string,
+    options: SendMessageOptions = {},
+  ): Promise<ChatMessage> {
+    const conversation = await this.createDirect(otherUserUUID);
+    const message = await this.rest.sendMessage(conversation.id, content, options);
+    this.sync.track(conversation.id, message.sequence);
     return message;
   }
 
@@ -342,6 +442,18 @@ export class AirwayIM {
   /** Drop all sync state for a conversation (e.g. after being kicked). */
   forgetConversation(conversationId: string): void {
     this.sync.forget(conversationId);
+    this.conversationKinds.delete(conversationId);
+  }
+
+  /** @internal Conversation objects: start tracking on first message listener. */
+  ensureTracked(conversationId: string): void {
+    if (this.sync.isTracked(conversationId)) return;
+    void this.history(conversationId).catch((err) => this.emit("error", err as Error));
+  }
+
+  /** @internal Conversation objects: surface listener exceptions. */
+  reportError(err: Error): void {
+    this.emit("error", err);
   }
 
   // ---- Storage ----

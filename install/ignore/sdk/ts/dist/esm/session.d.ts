@@ -1,7 +1,9 @@
 import type { IMAdapter, FileInput } from "./adapter.js";
 import { IMHttpClient } from "./http.js";
 import type { SendMessageOptions } from "./http.js";
-import type { ChatMessage, ConnectionStatus, Conversation, ConversationDetails, GatewayEvent, UploadResult, User } from "./types.js";
+import { DirectConversation, GroupConversation } from "./conversation.js";
+import type { Conversation } from "./conversation.js";
+import type { ChatMessage, ConnectionStatus, ConversationSummary, ConversationDetails, GatewayEvent, UploadResult, User } from "./types.js";
 export interface AirwayIMOptions {
     /** IM backend base URL, e.g. https://im.example.com (the :1905 service). */
     apiUrl: string;
@@ -16,8 +18,13 @@ export interface AirwayIMOptions {
      * returned credential.
      */
     getCredential?: () => Promise<string>;
-    /** Platform adapter; defaults to the WeChat Mini Program adapter. */
-    adapter?: IMAdapter;
+    /**
+     * Platform adapter — required and never defaulted, so a program running in
+     * the wrong runtime fails loudly here instead of mysteriously later. Pass
+     * wechatAdapter() in WeChat Mini Programs, browserAdapter() in browsers and
+     * Node, or your own IMAdapter implementation.
+     */
+    adapter: IMAdapter;
     /** Per-request timeout in ms (default 15000). */
     timeoutMs?: number;
     /** Gateway application-level ping interval in ms; 0 disables (default 25000). */
@@ -29,12 +36,12 @@ export interface AirwayIMOptions {
 }
 export interface MembersAddedInfo {
     conversationId: string;
-    addedUserUuids: string[];
+    addedUserUUIDs: string[];
     event: GatewayEvent;
 }
 export interface MembersRemovedInfo {
     conversationId: string;
-    removedUserUuid: string;
+    removedUserUUID: string;
     event: GatewayEvent;
 }
 export interface SessionEvents {
@@ -60,6 +67,13 @@ export declare class AirwayIM {
     private readonly listeners;
     private status;
     private wantConnected;
+    /** conversation id → kind, remembered from every call/event that reveals it. */
+    private readonly conversationKinds;
+    /** conversation id → conversation object; the same object (with its listeners) is
+     * returned by every open/create call for that conversation. */
+    private readonly conversations;
+    private rememberKind;
+    private conversationFor;
     constructor(options: AirwayIMOptions);
     on<K extends EventName>(event: K, listener: Listener<K>): this;
     off<K extends EventName>(event: K, listener: Listener<K>): this;
@@ -74,18 +88,26 @@ export declare class AirwayIM {
     /** Replace the credential everywhere (e.g. after your own re-login flow). */
     setCredential(credential: string): void;
     me(): Promise<User>;
-    listGroups(): Promise<Conversation[]>;
-    createConversation(input: {
-        kind: "direct" | "group";
-        memberUuids: string[];
-        title?: string;
-    }): Promise<Conversation>;
-    createDirect(otherUserUuid: string): Promise<Conversation>;
-    getDirectConversation(otherUserUuid: string): Promise<Conversation | null>;
-    createGroup(title: string | null, memberUuids: string[]): Promise<Conversation>;
-    getConversation(uuid: string): Promise<ConversationDetails>;
-    addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails>;
-    removeMember(conversationId: string, userUuid: string): Promise<ConversationDetails>;
+    listGroups(): Promise<ConversationSummary[]>;
+    /** Get-or-create the direct (1:1) conversation with one user, by uuid. */
+    createDirect(otherUserUUID: string): Promise<DirectConversation>;
+    /**
+     * The existing direct conversation with one user, by uuid, as a
+     * DirectConversation —
+     * or null when none exists yet (createDirect get-or-creates instead).
+     */
+    getDirect(otherUserUUID: string): Promise<DirectConversation | null>;
+    /** Create a group conversation; the authenticated user becomes its owner. */
+    createGroup(title: string | null, memberUUIDs: string[]): Promise<GroupConversation>;
+    /**
+     * Open any conversation by id as a conversation object (e.g. one learned
+     * from a "message" event or listGroups). The kind is answered from the
+     * registry when this instance already saw the conversation, otherwise
+     * fetched via REST once; rejects if the user cannot see the conversation.
+     */
+    openConversation(conversationId: string): Promise<Conversation>;
+    addMembers(conversationId: string, memberUUIDs: string[]): Promise<ConversationDetails>;
+    removeMembers(conversationId: string, userUUIDs: string[]): Promise<ConversationDetails>;
     /**
      * Initial load for a conversation: fetch messages after fromSequence
      * (default: last persisted sequence, else 0), track the sequence, and emit
@@ -105,16 +127,27 @@ export declare class AirwayIM {
         limit?: number;
     }): Promise<ChatMessage[]>;
     /**
-     * Send a message. Resolves with the stored message; the local sequence
-     * tracker is updated so the sender's own message.created event does not
-     * trigger a redundant fetch. The message is also emitted via "message"
-     * only when it arrives back through realtime/sync (at-least-once) — handle
-     * the return value for immediate UI feedback.
+     * Send a message to a group conversation by id. Resolves with the stored
+     * message; the local sequence tracker is updated so the sender's own
+     * message.created event does not trigger a redundant fetch. The message is
+     * also emitted via "message" only when it arrives back through
+     * realtime/sync (at-least-once) — handle the return value for immediate UI
+     * feedback.
      */
-    sendMessage(conversationId: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
+    sendGroupMessage(conversationId: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
+    /**
+     * Send a direct message to one other user, identified by their uuid:
+     * get-or-create the direct conversation, then send. Same idempotency
+     * semantics as sendGroupMessage.
+     */
+    sendDirectMessage(otherUserUUID: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
     lastSequence(conversationId: string): number;
     /** Drop all sync state for a conversation (e.g. after being kicked). */
     forgetConversation(conversationId: string): void;
+    /** @internal Conversation objects: start tracking on first message listener. */
+    ensureTracked(conversationId: string): void;
+    /** @internal Conversation objects: surface listener exceptions. */
+    reportError(err: Error): void;
     /** Upload a WeChat local path or browser File/Blob; returns {key,url,size}. */
     uploadFile(filePath: FileInput, dir?: string): Promise<UploadResult>;
     /** Public URL for a storage key (for <image src>, wx.downloadFile, ...). */

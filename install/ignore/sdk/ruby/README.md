@@ -76,9 +76,12 @@ Two things must be kept straight (full trust model in
 ### 2. Call the IM API
 
 Every method returns the envelope's `data` (a Hash or Array) and raises
-`AirwayIM::Error` on failure. Message responses come back as
-`AirwayIM::Message`, a Hash subclass — `message["id"]`, `message.id`, and
-`message.sender.uuid` all work:
+`AirwayIM::Error` on failure. Conversation-getters return
+`AirwayIM::DirectConversation` / `AirwayIM::GroupConversation` objects — one
+object per conversation carrying its `id` and `kind` (plus `title` on
+groups), with `send_message` / `list_messages` / `each_message` scoped to it.
+Message responses come back as `AirwayIM::Message`, a Hash subclass —
+`message["id"]`, `message.id`, and `message.sender.uuid` all work:
 
 ```ruby
 im = AirwayIM::Client.new(
@@ -87,23 +90,27 @@ im = AirwayIM::Client.new(
   get_credential: -> { mint_fresh_credential },  # optional: auto-renew + retry once on 401/10001
 )
 
-im.me                                     # current user profile
-conversation = im.create_direct("user-2") # direct conversation with the user whose uuid is "user-2" (get-or-create)
-im.direct_conversation("user-2")          # the existing direct conversation with "user-2", or nil (read-only)
-im.create_group(member_uuids: ["user-2", "user-3"], title: "Backend Team")
+direct = im.create_direct("user-2")       # DirectConversation object (get-or-create)
+im.get_direct("user-2")      # the existing object with "user-2", or nil (read-only)
+group = im.create_group(member_uuids: ["user-2", "user-3"], title: "Backend Team")
 im.list_groups                            # groups I belong to
-im.conversation(conversation["id"])       # conversation kind + members with roles
+group.details                             # conversation kind + members with roles
+im.open_conversation(group.id)            # any conversation by id, as a conversation object
 
 # Send a message: the Idempotency-Key is generated automatically and reused
 # across network-failure retries, so a message is never duplicated
-im.send_message(conversation["id"], "你好", content_type: "text/plain")
+direct.send_message("你好")
 message = im.send_direct_message("user-2", "你好") # one call: get-or-create the direct conversation, then send
-message.sequence                                  # Message is a Hash with reader methods; message["sequence"] works too
+message.sequence                          # Message is a Hash with reader methods; message["sequence"] works too
+
+group.add_members(["user-4"])             # group-only operations live on the object
+group.remove_members("user-4")
+group.details                             # members with roles, fresh from the API
 
 # History / sequence sync (catch up from the last cursor after going offline,
 # returned in ascending order)
-im.messages(conversation["id"], after_sequence: 42, limit: 100)
-im.each_message(conversation["id"]).each { |msg| … }   # auto-paging over the full history
+im.list_messages(direct.id, after_sequence: 42, limit: 100)
+im.each_message(direct.id).each { |msg| … }   # auto-paging over the full history
 
 im.upload_file("/path/to/avatar.png", dir: "avatars")   # returns {key, url, size}
 im.storage_url("avatars/202609/xxx.png")                # download URL
@@ -117,20 +124,29 @@ it to create conversations and send messages.
 
 ### `AirwayIM::Client` (public API, default `:1905`)
 
+Method names mirror the TS SDK one to one (snake_case here, camelCase there):
+`create_direct` ↔ `createDirect`, `get_direct` ↔
+`getDirectConversation`, `create_group` ↔
+`createGroup`, `list_messages` ↔ `listMessages`, and so on. The same conversation objects
+exist here — `DirectConversation` / `GroupConversation` with
+`send_message` / `list_messages` / `each_message` / `details` (groups:
+`add_members` / `remove_members`) and `open_conversation(id)` — minus the realtime
+layer: the TS objects' `on("message")` subscriptions, gateway, and sync
+engine have no Ruby counterpart in v1; poll `each_message` instead.
+
 | Method | Endpoint |
 | --- | --- |
 | `me` | `GET /api/v1/me` |
 | `list_groups` | `GET /api/v1/conversations?type=group` |
-| `create_conversation(kind:, member_uuids:, title: nil)` | `POST /api/v1/conversations` |
 | `create_direct(other_uuid)` | Same (direct get-or-create) |
-| `direct_conversation(other_uuid)` | `GET /api/v1/conversations/direct/:user_uuid` (nil when none) |
+| `get_direct(other_uuid)` | `GET /api/v1/conversations/direct/:user_uuid` (nil when none) |
 | `create_group(member_uuids:, title: nil)` | `POST /api/v1/group` |
-| `conversation(uuid)` | `GET /api/v1/conversations/:uuid` |
-| `add_members(uuid, member_uuids)` | `POST .../members` (owner/admin, idempotent) |
-| `remove_member(uuid, user_uuid)` | `DELETE .../members/:user_uuid` (owner/admin) |
-| `messages(uuid, after_sequence: nil, limit: nil)` | `GET .../messages` (raw paging, limit 1–200) |
-| `each_message(uuid, after_sequence: 0, page_size: 100)` | Auto-paging Enumerator over the history, ascending |
-| `send_message(conversation_id, content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
+| `open_conversation(conversation_id)` | `GET /api/v1/conversations/:uuid`, returned as a conversation object (kind/title resolved from the details) |
+| `add_members(conversation_id, member_uuids)` | `POST .../members` (owner/admin, idempotent) |
+| `remove_members(conversation_id, user_uuids)` | `DELETE .../members/:user_uuid` (owner/admin) |
+| `list_messages(conversation_id, after_sequence: nil, limit: nil)` | `GET .../messages` (raw paging, limit 1–200) |
+| `each_message(conversation_id, after_sequence: 0, page_size: 100)` | Auto-paging Enumerator over the history, ascending |
+| `send_group_message(conversation_id, content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
 | `send_direct_message(other_uuid, content, …)` | Get-or-create the direct conversation, then `POST /api/v1/messages` |
 | `upload_file(path or IO, filename:, dir:)` | `POST /api/v1/storage` (multipart) |
 | `storage_url(key)` | File download URL |
@@ -142,9 +158,29 @@ fresh credential and retries once; the `credential` field is updated),
 (default) and `text/plain`; content is limited to 32768 bytes and the server
 normalizes CRLF to LF.
 
+### Conversation objects
+
+`create_direct` and `get_direct` return an
+`AirwayIM::DirectConversation`; `create_group` and
+`open_conversation` resolve to an `AirwayIM::GroupConversation` (or
+`DirectConversation`) using the details lookup. Every object carries `id`
+and `kind` and scopes the conversation API to itself:
+
+| Handle method | Delegates to |
+| --- | --- |
+| `send_message(content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
+| `list_messages(after_sequence:, limit:)` | `list_messages(id, …)` |
+| `each_message(after_sequence: 0, page_size: 100)` | `each_message(id, …)` |
+| `add_members(member_uuids)` — groups | `add_members(id, member_uuids)` |
+| `remove_members(user_uuids) — groups | `remove_members(id, user_uuids)` |
+| `details` | `GET /api/v1/conversations/:uuid` |
+
+`group.title` carries the creation-time title (`nil` when created without
+one or when opened by id); `details` returns the live value.
+
 ### Message object
 
-`send_message`, `send_direct_message`, `messages`, and `each_message` return
+`send_message`, `send_direct_message`, `list_messages`, and `each_message` return
 `AirwayIM::Message` objects — Hash subclasses with reader methods, so
 `message["id"]`, `message.id`, and `message.sender.uuid` all work:
 
@@ -208,7 +244,7 @@ transport failure):
 
 ```ruby
 begin
-  im.send_message(id, "hi")
+  im.send_group_message(id, "hi")
 rescue AirwayIM::Error => e
   if e.auth_error?          # 10001 / 401: credential invalid or expired — renew or re-mint
   elsif e.code == AirwayIM::ErrorCode::PERMISSION_DENIED      # 10005
@@ -230,7 +266,7 @@ server-side integrations:
 1. Catch up with `messages(uuid, after_sequence: last_cursor)` or
    `each_message`;
 2. Process idempotently by `msg["id"]` and order by `sequence`;
-3. Treat `send_message`'s return value as authoritative — retries are handled
+3. Treat `send_group_message`'s return value as authoritative — retries are handled
    by the SDK (the same `Idempotency-Key` guarantees no duplicates).
 
 Realtime reception and automatic gap-filling for end-user clients (Mini

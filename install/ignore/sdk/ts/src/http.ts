@@ -8,7 +8,7 @@ import type { IMAdapter, FileInput } from "./adapter.js";
 import { buildUrl, joinUrl, randomId } from "./util.js";
 import type {
   ChatMessage,
-  Conversation,
+  ConversationSummary,
   ConversationDetails,
   ContentType,
   UploadResult,
@@ -155,31 +155,31 @@ export class IMHttpClient {
   // ---- Conversations ----
 
   /** List my active group conversations (direct ones are excluded by the backend). */
-  listGroups(): Promise<Conversation[]> {
-    return this.request<Conversation[]>("GET", "/api/v1/conversations", {
+  listGroups(): Promise<ConversationSummary[]> {
+    return this.request<ConversationSummary[]>("GET", "/api/v1/conversations", {
       query: { type: "group" },
     });
   }
 
   /** Create or resolve a conversation. Direct requests are get-or-create (may return 200). */
-  createConversation(input: {
+  private createConversation(input: {
     kind: "direct" | "group";
     /** Other members by their stable identity uuid; the authenticated user must not be included. */
-    memberUuids: string[];
+    memberUUIDs: string[];
     title?: string;
-  }): Promise<Conversation> {
-    return this.request<Conversation>("POST", "/api/v1/conversations", {
+  }): Promise<ConversationSummary> {
+    return this.request<ConversationSummary>("POST", "/api/v1/conversations", {
       body: {
         kind: input.kind,
-        member_uuids: input.memberUuids,
+        member_uuids: input.memberUUIDs,
         ...(input.title !== undefined ? { title: input.title } : {}),
       },
     });
   }
 
   /** Get-or-create a direct conversation with one other user, by uuid. */
-  createDirect(otherUserUuid: string): Promise<Conversation> {
-    return this.createConversation({ kind: "direct", memberUuids: [otherUserUuid] });
+  createDirect(otherUserUUID: string): Promise<ConversationSummary> {
+    return this.createConversation({ kind: "direct", memberUUIDs: [otherUserUUID] });
   }
 
   /**
@@ -187,11 +187,11 @@ export class IMHttpClient {
    * exists yet (read-only; createDirect get-or-creates instead). Combine with
    * listMessages to poll and display the history with that user.
    */
-  async getDirectConversation(otherUserUuid: string): Promise<Conversation | null> {
+  async getDirect(otherUserUUID: string): Promise<ConversationSummary | null> {
     try {
-      return await this.request<Conversation>(
+      return await this.request<ConversationSummary>(
         "GET",
-        `/api/v1/conversations/direct/${encodeURIComponent(otherUserUuid)}`,
+        `/api/v1/conversations/direct/${encodeURIComponent(otherUserUUID)}`,
       );
     } catch (err) {
       if (err instanceof IMError && err.code === ErrorCode.ConversationNotFound) return null;
@@ -200,33 +200,49 @@ export class IMHttpClient {
   }
 
   /** Create a new group; the authenticated user becomes its owner. */
-  createGroup(title: string | null, memberUuids: string[]): Promise<Conversation> {
-    return this.request<Conversation>("POST", "/api/v1/group", {
-      body: { title, member_uuids: memberUuids },
+  createGroup(title: string | null, memberUUIDs: string[]): Promise<ConversationSummary> {
+    return this.request<ConversationSummary>("POST", "/api/v1/group", {
+      body: { title, member_uuids: memberUUIDs },
     });
   }
 
-  getConversation(uuid: string): Promise<ConversationDetails> {
+  getConversation(conversationId: string): Promise<ConversationDetails> {
     return this.request<ConversationDetails>(
       "GET",
-      `/api/v1/conversations/${encodeURIComponent(uuid)}`,
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}`,
     );
   }
 
   /** Add members (by uuid) to a group (owner/admin; idempotent for already-active members). */
-  addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails> {
+  addMembers(conversationId: string, memberUUIDs: string[]): Promise<ConversationDetails> {
     return this.request<ConversationDetails>(
       "POST",
       `/api/v1/conversations/${encodeURIComponent(conversationId)}/members`,
-      { body: { member_uuids: memberUuids } },
+      { body: { member_uuids: memberUUIDs } },
     );
   }
 
+  /**
+   * Remove members (by uuid) from a group (owner/admin; cannot remove self
+   * or the owner). Idempotent for members who are not active. Returns the
+   * details after the last removal (the current details for an empty list).
+   */
+  async removeMembers(conversationId: string, userUUIDs: string[]): Promise<ConversationDetails> {
+    if (userUUIDs.length === 0) {
+      return this.getConversation(conversationId);
+    }
+    let details: ConversationDetails | undefined;
+    for (const userUUID of userUUIDs) {
+      details = await this.removeMember(conversationId, userUUID);
+    }
+    return details as ConversationDetails;
+  }
+
   /** Remove one member (by uuid) from a group (owner/admin; cannot remove self or the owner). */
-  removeMember(conversationId: string, userUuid: string): Promise<ConversationDetails> {
+  private removeMember(conversationId: string, userUUID: string): Promise<ConversationDetails> {
     return this.request<ConversationDetails>(
       "DELETE",
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userUuid)}`,
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}/members/${encodeURIComponent(userUUID)}`,
     );
   }
 
@@ -273,11 +289,11 @@ export class IMHttpClient {
    * semantics as sendMessage.
    */
   async sendDirectMessage(
-    otherUserUuid: string,
+    otherUserUUID: string,
     content: string,
     options: SendMessageOptions = {},
   ): Promise<ChatMessage> {
-    const conversation = await this.createDirect(otherUserUuid);
+    const conversation = await this.createDirect(otherUserUUID);
     return this.sendMessage(conversation.id, content, options);
   }
 

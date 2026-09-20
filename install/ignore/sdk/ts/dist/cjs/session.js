@@ -7,15 +7,38 @@ exports.AirwayIM = void 0;
 const http_js_1 = require("./http.js");
 const gateway_js_1 = require("./gateway.js");
 const sync_js_1 = require("./sync.js");
+const conversation_js_1 = require("./conversation.js");
 const error_js_1 = require("./error.js");
-const wechat_js_1 = require("./wechat.js");
 class AirwayIM {
+    rememberKind(conversationId, kind) {
+        this.conversationKinds.set(conversationId, kind);
+    }
+    conversationFor(id, kind, title = null) {
+        const existing = this.conversations.get(id);
+        if (existing)
+            return existing;
+        const conversation = kind === "direct" ? new conversation_js_1.DirectConversation(this, id) : new conversation_js_1.GroupConversation(this, id, title);
+        this.conversations.set(id, conversation);
+        return conversation;
+    }
     constructor(options) {
         this.gateway = null;
         this.listeners = new Map();
         this.status = "closed";
         this.wantConnected = false;
-        this.adapter = options.adapter ?? (0, wechat_js_1.wechatAdapter)();
+        /** conversation id → kind, remembered from every call/event that reveals it. */
+        this.conversationKinds = new Map();
+        /** conversation id → conversation object; the same object (with its listeners) is
+         * returned by every open/create call for that conversation. */
+        this.conversations = new Map();
+        if (!options.adapter) {
+            // The type makes this unreachable from TypeScript; the guard is for
+            // plain-JS callers, where a missing adapter would otherwise surface as
+            // a confusing wx/browser error deep inside the first request.
+            throw new Error("createClient requires an explicit adapter: wechatAdapter() for WeChat Mini " +
+                "Programs, browserAdapter() for browsers and Node, or a custom IMAdapter.");
+        }
+        this.adapter = options.adapter;
         this.wsUrl = options.wsUrl;
         this.rest = new http_js_1.IMHttpClient({
             apiUrl: options.apiUrl,
@@ -35,10 +58,15 @@ class AirwayIM {
             storage: options.persistSequences === false ? undefined : this.adapter.storage,
             handlers: {
                 onMessages: (messages, source) => {
-                    for (const message of messages)
+                    for (const message of messages) {
                         this.emit("message", message, source);
+                        this.conversations.get(message.conversation_id)?.emitLocal("message", message, source);
+                    }
                 },
-                onMessageUpdated: (message) => this.emit("message.updated", message),
+                onMessageUpdated: (message) => {
+                    this.emit("message.updated", message);
+                    this.conversations.get(message.conversation_id)?.emitLocal("message.updated", message);
+                },
             },
         });
         if (this.wsUrl) {
@@ -118,21 +146,29 @@ class AirwayIM {
                     .catch((err) => this.emit("error", err));
                 break;
             case "conversation.member_added":
+                // Member management is group-only server-side, so these events mark
+                // the conversation as a group in the kind registry.
+                this.rememberKind(event.conversation_id, "group");
                 if (event.added_user_uuids?.length) {
-                    this.emit("members.added", {
+                    const info = {
                         conversationId: event.conversation_id,
-                        addedUserUuids: event.added_user_uuids,
+                        addedUserUUIDs: event.added_user_uuids,
                         event,
-                    });
+                    };
+                    this.emit("members.added", info);
+                    this.conversations.get(event.conversation_id)?.emitLocal("members.added", info);
                 }
                 break;
             case "conversation.member_removed":
+                this.rememberKind(event.conversation_id, "group");
                 if (event.removed_user_uuid !== undefined) {
-                    this.emit("members.removed", {
+                    const info = {
                         conversationId: event.conversation_id,
-                        removedUserUuid: event.removed_user_uuid,
+                        removedUserUUID: event.removed_user_uuid,
                         event,
-                    });
+                    };
+                    this.emit("members.removed", info);
+                    this.conversations.get(event.conversation_id)?.emitLocal("members.removed", info);
                 }
                 break;
             default:
@@ -174,28 +210,65 @@ class AirwayIM {
         return this.rest.me();
     }
     listGroups() {
-        return this.rest.listGroups();
+        return this.rest.listGroups().then((conversations) => {
+            for (const conversation of conversations)
+                this.rememberKind(conversation.id, "group");
+            return conversations;
+        });
     }
-    createConversation(input) {
-        return this.rest.createConversation(input);
+    /** Get-or-create the direct (1:1) conversation with one user, by uuid. */
+    createDirect(otherUserUUID) {
+        return this.rest.createDirect(otherUserUUID).then((conversation) => {
+            this.rememberKind(conversation.id, "direct");
+            return this.conversationFor(conversation.id, "direct");
+        });
     }
-    createDirect(otherUserUuid) {
-        return this.rest.createDirect(otherUserUuid);
+    /**
+     * The existing direct conversation with one user, by uuid, as a
+     * DirectConversation —
+     * or null when none exists yet (createDirect get-or-creates instead).
+     */
+    getDirect(otherUserUUID) {
+        return this.rest.getDirect(otherUserUUID).then((conversation) => {
+            if (!conversation)
+                return null;
+            this.rememberKind(conversation.id, "direct");
+            return this.conversationFor(conversation.id, "direct");
+        });
     }
-    getDirectConversation(otherUserUuid) {
-        return this.rest.getDirectConversation(otherUserUuid);
+    /** Create a group conversation; the authenticated user becomes its owner. */
+    createGroup(title, memberUUIDs) {
+        return this.rest.createGroup(title, memberUUIDs).then((conversation) => {
+            this.rememberKind(conversation.id, "group");
+            return this.conversationFor(conversation.id, "group", conversation.title);
+        });
     }
-    createGroup(title, memberUuids) {
-        return this.rest.createGroup(title, memberUuids);
+    /**
+     * Open any conversation by id as a conversation object (e.g. one learned
+     * from a "message" event or listGroups). The kind is answered from the
+     * registry when this instance already saw the conversation, otherwise
+     * fetched via REST once; rejects if the user cannot see the conversation.
+     */
+    async openConversation(conversationId) {
+        const existing = this.conversations.get(conversationId);
+        if (existing)
+            return existing;
+        let kind = this.conversationKinds.get(conversationId);
+        if (!kind) {
+            const details = await this.rest.getConversation(conversationId);
+            kind = details.type;
+            this.rememberKind(details.conversation_uuid, kind);
+        }
+        return this.conversationFor(conversationId, kind);
     }
-    getConversation(uuid) {
-        return this.rest.getConversation(uuid);
+    addMembers(conversationId, memberUUIDs) {
+        // Member management is group-only server-side.
+        this.rememberKind(conversationId, "group");
+        return this.rest.addMembers(conversationId, memberUUIDs);
     }
-    addMembers(conversationId, memberUuids) {
-        return this.rest.addMembers(conversationId, memberUuids);
-    }
-    removeMember(conversationId, userUuid) {
-        return this.rest.removeMember(conversationId, userUuid);
+    removeMembers(conversationId, userUUIDs) {
+        this.rememberKind(conversationId, "group");
+        return this.rest.removeMembers(conversationId, userUUIDs);
     }
     /**
      * Initial load for a conversation: fetch messages after fromSequence
@@ -218,15 +291,28 @@ class AirwayIM {
         return this.rest.listMessages(conversationId, options);
     }
     /**
-     * Send a message. Resolves with the stored message; the local sequence
-     * tracker is updated so the sender's own message.created event does not
-     * trigger a redundant fetch. The message is also emitted via "message"
-     * only when it arrives back through realtime/sync (at-least-once) — handle
-     * the return value for immediate UI feedback.
+     * Send a message to a group conversation by id. Resolves with the stored
+     * message; the local sequence tracker is updated so the sender's own
+     * message.created event does not trigger a redundant fetch. The message is
+     * also emitted via "message" only when it arrives back through
+     * realtime/sync (at-least-once) — handle the return value for immediate UI
+     * feedback.
      */
-    async sendMessage(conversationId, content, options = {}) {
+    async sendGroupMessage(conversationId, content, options = {}) {
+        this.rememberKind(conversationId, "group");
         const message = await this.rest.sendMessage(conversationId, content, options);
         this.sync.track(conversationId, message.sequence);
+        return message;
+    }
+    /**
+     * Send a direct message to one other user, identified by their uuid:
+     * get-or-create the direct conversation, then send. Same idempotency
+     * semantics as sendGroupMessage.
+     */
+    async sendDirectMessage(otherUserUUID, content, options = {}) {
+        const conversation = await this.createDirect(otherUserUUID);
+        const message = await this.rest.sendMessage(conversation.id, content, options);
+        this.sync.track(conversation.id, message.sequence);
         return message;
     }
     lastSequence(conversationId) {
@@ -235,6 +321,17 @@ class AirwayIM {
     /** Drop all sync state for a conversation (e.g. after being kicked). */
     forgetConversation(conversationId) {
         this.sync.forget(conversationId);
+        this.conversationKinds.delete(conversationId);
+    }
+    /** @internal Conversation objects: start tracking on first message listener. */
+    ensureTracked(conversationId) {
+        if (this.sync.isTracked(conversationId))
+            return;
+        void this.history(conversationId).catch((err) => this.emit("error", err));
+    }
+    /** @internal Conversation objects: surface listener exceptions. */
+    reportError(err) {
+        this.emit("error", err);
     }
     // ---- Storage ----
     /** Upload a WeChat local path or browser File/Blob; returns {key,url,size}. */

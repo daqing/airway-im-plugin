@@ -5,7 +5,7 @@
 // idempotent retry, moderation masking, and storage upload.
 // Phase 2 re-runs the core chat flow through the built-in browserAdapter.
 
-import { createIM, IMError, browserAdapter } from "../dist/esm/index.js";
+import { createClient, IMError, browserAdapter, InternalClient } from "../dist/esm/index.js";
 import type { AirwayIM } from "../dist/esm/index.js";
 import type { ChatMessage } from "../dist/esm/index.js";
 import { nodeAdapter } from "./node-adapter.ts";
@@ -56,18 +56,20 @@ async function waitFor<T>(
   }
 }
 
+const internal = new InternalClient({
+  internalUrl: INTERNAL_URL,
+  internalSecret: INTERNAL_SECRET,
+});
+
 async function mint(name: string): Promise<string> {
-  const res = await fetch(`${INTERNAL_URL}/internal/v1/credentials`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-IM-Internal-Secret": INTERNAL_SECRET,
-    },
-    body: JSON.stringify({ uuid: `${name}-${Math.random().toString(36).slice(2, 10)}`, name }),
+  const minted = await internal.mintCredential({
+    uuid: `${name}-${Math.random().toString(36).slice(2, 10)}`,
+    name,
   });
-  const body = (await res.json()) as { code: number; data?: { credential: string } };
-  if (body.code !== 0 || !body.data) throw new Error(`mint failed for ${name}: ${res.status}`);
-  return body.data.credential;
+  if (!minted.credential || typeof minted.expiresAt !== "string") {
+    throw new Error(`mint failed for ${name}: missing credential/expires_at`);
+  }
+  return minted.credential;
 }
 
 interface Collector {
@@ -109,26 +111,44 @@ async function main(): Promise<void> {
   ]);
   ok("mint three dev credentials", Boolean(aliceCred && bobCred && carolCred));
 
-  const alice = createIM({
+  const alice = createClient({
     apiUrl: API_URL,
     wsUrl: WS_URL,
     credential: aliceCred,
     adapter: nodeAdapter(),
     persistSequences: false,
   });
-  const bob = createIM({
+  const bob = createClient({
     apiUrl: API_URL,
     wsUrl: WS_URL,
     credential: bobCred,
     adapter: nodeAdapter(),
     persistSequences: false,
   });
-  const carol = createIM({ apiUrl: API_URL, credential: carolCred, adapter: nodeAdapter() });
+  const carol = createClient({ apiUrl: API_URL, credential: carolCred, adapter: nodeAdapter() });
 
   const aliceMe = await alice.me();
   const bobMe = await bob.me();
   const carolMe = await carol.me();
   ok("me(): profiles resolve", Boolean(aliceMe.uuid) && Boolean(bobMe.uuid) && Boolean(carolMe.uuid));
+
+  // TypeScript rejects a missing adapter at compile time; plain-JS callers
+  // hit the runtime guard instead — exercise that guard here via a cast.
+  let adapterError: Error | null = null;
+  try {
+    createClient({
+      apiUrl: API_URL,
+      wsUrl: WS_URL,
+      credential: aliceCred,
+    } as unknown as Parameters<typeof createClient>[0]);
+  } catch (err) {
+    adapterError = err as Error;
+  }
+  ok(
+    "createClient without an adapter fails fast",
+    adapterError !== null && /requires an explicit adapter/.test(adapterError.message),
+    adapterError?.message ?? "no throw",
+  );
 
   // ---- Realtime connect (auth first frame) ----
   const aliceEvents = collect(alice);
@@ -142,22 +162,32 @@ async function main(): Promise<void> {
   // ---- Direct conversation + realtime fan-out ----
   const direct = await alice.createDirect(bobMe.uuid);
   ok("direct get-or-create", direct.kind === "direct" && direct.id.length === 26);
-  await bob.history(direct.id); // track the conversation before traffic flows
+  const resolved = await alice.getDirect(bobMe.uuid);
+  ok(
+    "getDirect returns the same DirectConversation handle",
+    resolved !== null && resolved === direct,
+  );
+  const missing = await carol.getDirect(bobMe.uuid);
+  ok("getDirect returns null when absent", missing === null);
 
-  const resolved = await alice.getDirectConversation(bobMe.uuid);
-  ok("getDirectConversation resolves the existing conversation", resolved?.id === direct.id);
-  const missing = await carol.getDirectConversation(bobMe.uuid);
-  ok("getDirectConversation returns null when absent", missing === null);
+  // Bob opens the conversation he never created: subscribing auto-tracks it,
+  // so the message arrives without a manual history() call.
+  const bobDirect = await bob.getDirect(aliceMe.uuid);
+  ok("bob resolves the direct conversation", bobDirect !== null && bobDirect.kind === "direct");
+  const bobDirectInbox: ChatMessage[] = [];
+  bobDirect?.on("message", (m) => bobDirectInbox.push(m));
 
-  const sent = await alice.sendMessage(direct.id, "hello **bob**", {
-    contentType: "text/markdown",
-  });
-  ok("sendMessage returns stored message", sent.sequence === 1 && sent.sender.uuid === aliceMe.uuid);
+  const sent = await direct.send("hello **bob**", { contentType: "text/markdown" });
+  ok("conversation handle send()", sent.sequence === 1 && sent.sender.uuid === aliceMe.uuid);
 
   const received = await waitFor("bob receives direct message in order", () =>
     bobEvents.messages.find((m) => m.id === sent.id),
   );
   ok("realtime fan-out to recipient", received.content === "hello **bob**");
+  const scoped = await waitFor("scoped direct event fires", () =>
+    bobDirectInbox.find((m) => m.id === sent.id),
+  );
+  ok("conversation-scoped message event", scoped.content === "hello **bob**");
   ok(
     "no duplicate emission for sender (own sequence tracked)",
     !aliceEvents.messages.some((m) => m.id === sent.id),
@@ -165,29 +195,39 @@ async function main(): Promise<void> {
 
   // ---- Group conversation ----
   const group = await alice.createGroup("SDK E2E Group", [bobMe.uuid]);
-  ok("group created", group.kind === "group");
+  ok("group created", group.kind === "group" && group.title === "SDK E2E Group");
+
+  // Bob was made a member at creation; he opens it by id — kind comes from a
+  // REST lookup (his instance has never seen this conversation before).
+  const bobGroup = await bob.openConversation(group.id);
+  ok("openConversation resolves a GroupConversation", bobGroup.kind === "group");
+  const bobGroupInbox: ChatMessage[] = [];
+  let bobGroupAdded = 0;
+  bobGroup.on("message", (m) => bobGroupInbox.push(m));
+  bobGroup.on("members.added", () => {
+    bobGroupAdded += 1;
+  });
 
   const bobGroups = await bob.listGroups();
   ok("listGroups sees the new group", bobGroups.some((g) => g.id === group.id));
 
-  await bob.history(group.id);
-
-  const groupMsg = await alice.sendMessage(group.id, "first group message", {
+  const groupMsg = await group.send("first group message", {
     idempotencyKey: "e2e-fixed-key",
     retries: 0,
   });
-  await waitFor("bob receives group message", () =>
-    bobEvents.messages.find((m) => m.id === groupMsg.id),
+  const scopedGroupMsg = await waitFor("scoped group message event", () =>
+    bobGroupInbox.find((m) => m.id === groupMsg.id),
   );
+  ok("group message via the group handle", scopedGroupMsg.content === "first group message");
 
   // ---- Idempotent replay ----
-  const replay = await alice.sendMessage(group.id, "first group message", {
+  const replay = await alice.sendGroupMessage(group.id, "first group message", {
     idempotencyKey: "e2e-fixed-key",
     retries: 0,
   });
   ok("same idempotency key replays the original message", replay.id === groupMsg.id);
   try {
-    await alice.sendMessage(group.id, "DIFFERENT BODY", { idempotencyKey: "e2e-fixed-key", retries: 0 });
+    await alice.sendGroupMessage(group.id, "DIFFERENT BODY", { idempotencyKey: "e2e-fixed-key", retries: 0 });
     ok("key reuse with different body rejected", false);
   } catch (err) {
     const e = err as IMError;
@@ -199,9 +239,10 @@ async function main(): Promise<void> {
   ok("addMembers returns details with carol", details.members.some((m) => m.uuid === carolMe.uuid));
   await waitFor("bob sees members.added event", () => bobEvents.added > 0);
 
-  const removedDetails = await alice.removeMember(group.id, carolMe.uuid);
-  ok("removeMember drops carol", !removedDetails.members.some((m) => m.uuid === carolMe.uuid));
+  const removedDetails = await alice.removeMembers(group.id, [carolMe.uuid]);
+  ok("removeMembers drops carol", !removedDetails.members.some((m) => m.uuid === carolMe.uuid));
   await waitFor("bob sees members.removed event", () => bobEvents.removed > 0);
+  ok("scoped members.added on the group handle", bobGroupAdded === 1);
 
   // Carol (kicked) must be denied group access now.
   try {
@@ -212,10 +253,32 @@ async function main(): Promise<void> {
     ok("kicked member cannot read group messages", e.status === 403 || e.status === 404, `status=${e.status}`);
   }
 
+  // ---- Kind routing for a conversation this instance never opened ----
+  // Dave is added to the group while online and never calls any group API:
+  // the members.added gateway event alone must classify it as a group, so
+  // openConversation returns a GroupConversation without any REST lookup.
+  const daveCred = await mint("sdk-dave");
+  const dave = createClient({
+    apiUrl: API_URL,
+    wsUrl: WS_URL,
+    credential: daveCred,
+    adapter: nodeAdapter(),
+    persistSequences: false,
+  });
+  const daveMe = await dave.me();
+  dave.connect();
+  await waitOnline(dave);
+  const daveSawMemberAdded = new Promise<void>((resolve) => dave.on("members.added", () => resolve()));
+  await alice.addMembers(group.id, [daveMe.uuid]);
+  await daveSawMemberAdded;
+  const daveGroup = await dave.openConversation(group.id);
+  ok("openConversation learns kind from gateway events", daveGroup.kind === "group");
+  dave.disconnect();
+
   // ---- Offline recovery: disconnect, send, reconnect, resync ----
   bob.disconnect();
   await sleep(200);
-  const missed = await alice.sendMessage(group.id, "sent while bob offline", { retries: 0 });
+  const missed = await alice.sendGroupMessage(group.id, "sent while bob offline", { retries: 0 });
   await sleep(500); // let delivery push to (absent) bob only
   ok("message sent while bob offline", Boolean(missed.id));
   bob.connect();
@@ -269,14 +332,14 @@ async function main(): Promise<void> {
 /** Phase 2: the same chat flow through the built-in browser adapter. */
 async function browserAdapterPhase(): Promise<void> {
   const [credA, credB] = await Promise.all([mint("sdk-web-alice"), mint("sdk-web-bob")]);
-  const alice = createIM({
+  const alice = createClient({
     apiUrl: API_URL,
     wsUrl: WS_URL,
     credential: credA,
     adapter: browserAdapter(),
     persistSequences: true,
   });
-  const bob = createIM({
+  const bob = createClient({
     apiUrl: API_URL,
     wsUrl: WS_URL,
     credential: credB,
@@ -295,7 +358,7 @@ async function browserAdapterPhase(): Promise<void> {
 
   const direct = await alice.createDirect(bobMe.uuid);
   await bob.history(direct.id);
-  const sent = await alice.sendMessage(direct.id, "hello from the browser adapter");
+  const sent = await direct.send("hello from the browser adapter");
   const received = await waitFor("browserAdapter: realtime receive", () =>
     bobEvents.messages.find((m) => m.id === sent.id),
   );
@@ -308,7 +371,7 @@ async function browserAdapterPhase(): Promise<void> {
   // Reconnect resync + sequence persistence through localStorage.
   bob.disconnect();
   await sleep(200);
-  const missed = await alice.sendMessage(direct.id, "offline while browser bob is away");
+  const missed = await direct.send("offline while browser bob is away");
   bob.connect();
   await waitOnline(bob);
   await waitFor("browserAdapter: resync after reconnect", () =>

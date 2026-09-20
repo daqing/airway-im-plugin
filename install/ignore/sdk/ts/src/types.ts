@@ -11,7 +11,7 @@ export interface User {
   updated_at: string;
 }
 
-export interface Conversation {
+export interface ConversationSummary {
   id: string;
   kind: "direct" | "group";
   title: string | null;
@@ -22,6 +22,9 @@ export interface Conversation {
 }
 
 export type MemberRole = "owner" | "admin" | "member";
+
+/** Conversation kind — how a conversation id routes in the UI. */
+export type ConversationKind = "direct" | "group";
 
 export interface ConversationMember {
   uuid: string;

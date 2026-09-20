@@ -1,7 +1,7 @@
 "use strict";
 // Default adapter for browsers (Vue / React / plain JS). Pure web-platform
 // APIs: fetch, WebSocket, FormData/Blob, localStorage, visibilitychange.
-// Selected explicitly: createIM({ adapter: browserAdapter() }) — the default
+// Selected explicitly: createClient({ adapter: browserAdapter() }) — the default
 // adapter remains the WeChat Mini Program one.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.browserAdapter = browserAdapter;
@@ -23,7 +23,7 @@ function browserAdapter() {
         typeof browser.FormData !== "function" ||
         typeof browser.AbortController !== "function") {
         throw new Error("browserAdapter requires a web browser runtime (fetch + WebSocket + FormData + AbortController). " +
-            "For WeChat Mini Programs use the default adapter; other platforms need a custom one.");
+            "For WeChat Mini Programs pass wechatAdapter(); other platforms need a custom adapter.");
     }
     const fetchWithTimeout = (url, init, timeoutMs) => {
         const controller = new browser.AbortController();
