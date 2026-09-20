@@ -27,7 +27,7 @@
                     HTTPS (REST)                     WebSocket
   客户端 ───────────────────────────────► backend :1905
      │                                        ▲
-     │  ws://gateway:1910/ws                  │ 2. 轮询 outbox
+     │  ws://gateway:1910/ws                  │ 2. 轮询 outbox + ack（:1906）
      ▼                                        │    （事件在第 1 步的
   gateway :1910 ◄──── 3. 投递 + 确认 ──── delivery :1920   事务中写入）
      │

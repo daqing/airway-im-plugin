@@ -35,7 +35,7 @@ The plugin follows a three-service layout — backend / gateway / delivery:
                     HTTPS (REST)                     WebSocket
   Clients ───────────────────────────────► backend :1905
      │                                        ▲
-     │  ws://gateway:1910/ws                  │ 2. poll outbox
+     │  ws://gateway:1910/ws                  │ 2. poll outbox + ack (:1906)
      ▼                                        │    (events written in step 1's
   gateway :1910 ◄───── 3. deliver + ack ── delivery :1920   transaction)
      │
