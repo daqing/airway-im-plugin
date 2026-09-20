@@ -15,7 +15,7 @@ services:
     environment:
       <<: *internal-environment
       GATEWAY_ADDR: :1910
-      BACKEND_URL: http://backend:1905
+      INTERNAL_SERVICE_URL: http://backend:1906
       GATEWAY_ALLOWED_ORIGINS: ${GATEWAY_ALLOWED_ORIGINS:-}
     ports:
       - "${GATEWAY_PORT:-1910}:1910"
@@ -40,11 +40,9 @@ services:
     environment:
       <<: *internal-environment
       DELIVERY_ADDR: :1920
-      BACKEND_URL: http://backend:1905
+      INTERNAL_SERVICE_URL: http://backend:1906
       GATEWAY_URL: http://gateway:1910
       DELIVERY_POLL_INTERVAL_MS: ${DELIVERY_POLL_INTERVAL_MS:-500}
-    ports:
-      - "${DELIVERY_PORT:-1920}:1920"
     depends_on:
       backend:
         condition: service_healthy

@@ -1,6 +1,7 @@
 # airway-im-plugin（中文文档）
 
-一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：Airway 项目签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。下分发，在任何启用本插件的 Airway 应用中即可独立跑起整套服务。配套的 gateway 与 delivery 服务随插件一起在 [`deps/`](../../) 下分发，在任何启用本插件的 Airway 应用中即可独立跑起整套服务。
+一个 [Airway](https://github.com/daqing/airway) 插件，打包了完整的 IM 聊天后台：Airway 项目签名凭证身份、单聊与群聊会话、基于序列号的持久化消息与断线同步、带内容审核的管理后台 API、WebSocket 网关，以及事务性 outbox 投递器。配套的 gateway 与 delivery 服务随插件一起在
+[`deps/`](../../) 下分发；在 Airway 应用中启用本插件，即可跑起整套服务。
 
 插件通过 Airway 项目签名的 HMAC 凭证认证用户：Airway 应用对自己的 `(name, uuid)` 身份二元组
 签名，插件无状态验签。英文版文档位于仓库根目录的 [`README.md`](../../../README.md)。
@@ -14,6 +15,7 @@
 - [用户认证](#用户认证)
 - [使用 IM API](#使用-im-api)
 - [建立 WebSocket 连接](#建立-websocket-连接)
+- [Web 管理后台](#web-管理后台)
 - [配置项参考](#配置项参考)
 - [开发指南](#开发指南)
 
@@ -25,7 +27,7 @@
                     HTTPS (REST)                     WebSocket
   客户端 ───────────────────────────────► backend :1905
      │                                        ▲
-     │  ws://gateway:1910/ws                  │ 2. 轮询 outbox
+     │  ws://gateway:1910/ws                  │ 2. 轮询 outbox + ack（:1906）
      ▼                                        │    （事件在第 1 步的
   gateway :1910 ◄──── 3. 投递 + 确认 ──── delivery :1920   事务中写入）
      │
@@ -100,15 +102,19 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 **管理与审核**
 
-- `/admin/api` 会话登录（`IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD`），
-  12 小时内存会话。
+- 内置 Web 管理后台 `/admin/im`：用 `IM_ADMIN_USERNAME` /
+  `IM_ADMIN_PASSWORD` 登录，即可在浏览器里完成全部管理操作——实时系统状态、
+  用户目录与凭证撤销、群聊会话、消息审查与一键标记违规。前端是插件自带的
+  内嵌 Preact bundle（TanStack Query + TanStack Table，基于 airway-ui
+  组件集），无需额外部署，且遵循 `URL_PREFIX`。
+- `/admin/api` 走同一套会话登录，12 小时内存会话。
 - 系统状态聚合数据库计数、gateway/delivery 的实时指标与在线用户列表；
   用户列表含最近活跃时间。
 - 凭证撤销：`POST /admin/api/users/:uuid/revoke` 递增用户的
   `token_version`（使 backend 签发的凭证立即失效），并踢掉 gateway 上的
   在线连接。
-- 群聊会话浏览、消息查看，以及一键 `mark-illegal`：违规内容对客户端
-  屏蔽为 `***`，并向在线成员扇出 `message.moderated` 事件。
+- 会话浏览覆盖群聊**与**单聊，支持消息查看与一键 `mark-illegal`：违规内容
+  对客户端屏蔽为 `***`，并向在线成员扇出 `message.moderated` 事件。
 
 **可观测性**
 
@@ -129,7 +135,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 | 路径 | 角色 | 默认端口 |
 | --- | --- | --- |
-| 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API、内部 API、迁移、REPL 模型 | — |
+| 仓库根目录（Go module `github.com/daqing/airway-im-plugin`） | IM 插件（包 `implugin`）：IM API、管理 API 与 Web 后台、内部 API、迁移、REPL 模型 | — |
 | [`deps/im/gateway/`](../gateway/) | 独立 Go module（通过 `plugin:install` 随插件装入 Airway 项目）：WebSocket 网关 | 1910 |
 | [`deps/im/delivery/`](../delivery/) | 独立 Go module（通过 `plugin:install` 随插件装入 Airway 项目）：事务性 outbox 投递器 | 1920 |
 | [`deps/im/docs/`](.) | 设计文档、API 指南、OpenAPI 契约、落地页（`index.html`）、中文文档 | — |
@@ -143,6 +149,7 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 | `app/api/internal_api` | 网关鉴权、凭证签发、outbox 轮询/确认（密钥保护） |
 | `app/api/me_api` | 资料查询 |
 | `app/api/admin_api` | 管理后台端点：会话、用户、状态、审核 |
+| `app/dashboard` | `/admin/im` Web 管理后台：内嵌 bundle（提交在 `web/dist`）、HTML 外壳、静态资产服务 |
 | `app/auth` | 凭证签发/验签与用户自动注册 |
 | `app/models` | `User` 模型与 REPL 注册 |
 | `app/repo` | 框架 `database/sql` 连接池之上的轻量 sqlx 门面 |
@@ -157,7 +164,8 @@ sequence 的同步 API 恢复。投递语义为至少一次（at-least-once）�
 
 ### 作为插件使用
 
-在任意 Airway 应用中启用本插件 —— 用 Airway 的安装命令，或手动添加：
+这是本插件唯一的使用方式 —— 没有独立运行模式。将它启用在 Airway 应用之内：
+用 Airway 的安装命令，或手动添加：
 
 ```bash
 go run . plugin:install github.com/daqing/airway-im-plugin   # 在 Airway 应用中执行
@@ -165,7 +173,7 @@ go run . plugin:install github.com/daqing/airway-im-plugin   # 在 Airway 应用
 
 本地目录安装可改用指向本仓库的 `replace` 指令。启用即向 Airway 项目的
 `plugins.go` 添加 blank import `_ "github.com/daqing/airway-im-plugin"`；
-import 时插件注册其路由（`/api/v1/...`、`/admin/api`）、
+import 时插件注册其路由（`/api/v1/...`、`/admin/api`、`/admin/im` Web 管理后台）、
 Go DSL 迁移和 `User` REPL 模型。内部 API（`/internal/v1`）单独提供：
 Airway 项目启动时插件会为它启动专用 listener（`IM_INTERNAL_ADDR`，默认
 `127.0.0.1:1906`）。`plugin:install` 还会把插件的 `deps/`
@@ -174,10 +182,10 @@ Airway 项目启动时插件会为它启动专用 listener（`IM_INTERNAL_ADDR`�
 落地为 `go.mod`，已存在的文件不会被覆盖）。然后执行 Airway 项目的 `db:migrate` 创建 IM 表，
 并在 Airway 项目环境中设置 `IM_AUTH_SECRET`（实时链路还需 `IM_INTERNAL_SECRET`）。
 
-### 独立运行
+### 启动完整服务栈
 
-任何启用了本插件的 Airway 应用都是完整的 IM backend。想单独跑起整套
-服务，只需脚手架一个新的 Airway 项目、安装插件、启动三个服务：
+任何启用了本插件的 Airway 应用都是完整的 IM backend。想要一套专用的 IM
+部署，脚手架一个全新的 Airway 项目、安装插件、启动三个服务：
 
 ```bash
 go install github.com/daqing/airway@latest
@@ -192,18 +200,18 @@ go run . server       # 启动 backend，监听 :1905
 ```
 
 IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注册，因此必须通过
-**Airway 项目二进制**执行（`go run . db:migrate`），独立的 `airway` CLI 看不到它们。
+**Airway 项目二进制**执行（`go run . db:migrate`），全局安装的 `airway` CLI 看不到它们。
 
 再从 `plugin:install` 复制进 Airway 项目的 `deps/` 目录启动两个配套服务（三个服务
 必须共享同一个 `IM_INTERNAL_SECRET`）：
 
 ```bash
-(cd deps/im/gateway && BACKEND_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
-(cd deps/im/delivery && BACKEND_URL=http://127.0.0.1:1906 \
+(cd deps/im/gateway && INTERNAL_SERVICE_URL=http://127.0.0.1:1906 go run .)   # gateway :1910
+(cd deps/im/delivery && INTERNAL_SERVICE_URL=http://127.0.0.1:1906 \
                         GATEWAY_URL=http://127.0.0.1:1910 go run .)  # delivery :1920
 ```
 
-`BACKEND_URL` 指向 backend 的内部 API listener（`IM_INTERNAL_ADDR`，默认
+`INTERNAL_SERVICE_URL` 指向 backend 的内部 API listener（`IM_INTERNAL_ADDR`，默认
 `127.0.0.1:1906`）而不是公开端口 —— 配套服务只调用 `/internal/v1/*`。
 
 也可以用 Docker 跑起整套服务：`plugin:install` 会在 Airway 项目根目录生成
@@ -225,10 +233,10 @@ IM 迁移是 `db/migrate/` 下的 Go DSL 变更，通过插件包在 init 时注
 listener 提供（`IM_INTERNAL_ADDR`，默认 `127.0.0.1:1906`），公开端口访问
 它会返回 404。在 Airway 项目 `go.mod` 中升级插件依赖后：
 
-- **把 gateway 和 delivery 的 `BACKEND_URL` 指向内部 listener**（例如
-  `http://127.0.0.1:1906`）。随插件分发的默认值已经指向新地址；只有显式
-  设置过 `BACKEND_URL`（通常是 `http://<host>:1905`）的部署需要修改，
-  否则实时链路会中断。
+- **把 gateway 和 delivery 的 `BACKEND_URL` 改名为 `INTERNAL_SERVICE_URL`**
+  并指向内部 listener（例如 `http://127.0.0.1:1906`）。随插件分发的默认值
+  已经指向新地址；只有显式设置过 `BACKEND_URL`（旧变量名，通常是
+  `http://<host>:1905`）的部署需要改名并调整指向，否则实时链路会中断。
 - 如果 gateway/delivery 与 backend 不在同一台机器，把 `IM_INTERNAL_ADDR`
   绑定到内网网卡（代替默认的回环地址），并确保该端口不对公网开放。
 
@@ -332,7 +340,8 @@ HTTP API 一览：
 | `GET /api/v1/conversations/:uuid/messages?after_sequence=N` | 历史消息 / 同步 |
 | `POST /api/v1/conversations/:uuid/messages` | 向指定会话发消息 |
 | `POST /api/v1/messages` | 按会话 ID 发消息 |
-| `/admin/api/*` | 管理后台（登录、状态、用户、审核） |
+| `GET /admin/im` | Web 管理后台（`/admin/api` 之上的浏览器界面） |
+| `/admin/api/*` | 管理 API（登录、状态、用户、审核） |
 | `/internal/v1/*` | 服务间接口（网关鉴权、凭证签发、outbox、确认）—— 独立 listener（默认 `127.0.0.1:1906`）+ 密钥保护 |
 
 ## 建立 WebSocket 连接
@@ -359,6 +368,27 @@ HTTP API 一览：
 与基于 sequence 的补同步封装成一个类型化的 `createIM()` 门面，并内置微信小程序
 与浏览器两套平台适配器。
 
+## Web 管理后台
+
+插件自带管理界面 **`/admin/im`**，挂在 backend 的公共端口上 —— 浏览器打开
+`http://127.0.0.1:1905/admin/im`，用 `IM_ADMIN_USERNAME` /
+`IM_ADMIN_PASSWORD` 登录即可。会话有效期 12 小时；任何请求未通过鉴权都会
+自动回到登录页。宿主项目配置了子路径（`URL_PREFIX`）时，管理后台会自动跟随。
+
+界面是插件二进制自带的内嵌 Preact bundle（TanStack Query + TanStack
+Table，基于 airway-ui 组件集副本）—— 无需额外部署，宿主项目也不需要
+JavaScript 工具链。四个页面覆盖了 `/admin/api` 的全部能力：
+
+| 页面 | 功能 |
+| --- | --- |
+| **概览（Overview）** | 注册用户数、在线人数、outbox 待发布/已发布（含积压时长与失败次数）、gateway/delivery 实时指标面板；每 15 秒自动刷新，服务异常时明确标注。 |
+| **用户（Users）** | 可搜索的身份目录（用户名、昵称、邮箱、UUID、最近活跃、token 版本），一键**吊销凭证** —— 递增 `token_version` 并显示踢掉了多少条在线连接。 |
+| **会话（Conversations）** | 群聊与单聊分两个标签页 —— 群聊显示成员/消息数，单聊以参与者组合标识；支持统一搜索，点击行即可查看消息。 |
+| **消息（Messages）** | 按会话查看完整消息（sequence、发送者、内容、类型、状态）；打开详情并可**标记违规** —— 内容对客户端屏蔽为 `***`，并向在线成员扇出 `message.moderated` 事件。 |
+
+需要程序化访问同一能力时，使用 `/admin/api` 的 HTTP 端点
+（[`deps/im/docs/api/admin.md`](api/admin.md)）。
+
 ## 配置项参考
 
 | 变量 | 服务 | 默认值 | 说明 |
@@ -375,7 +405,7 @@ HTTP API 一览：
 | `IM_INTERNAL_ADDR` | backend | `127.0.0.1:1906` | 内部 API（`/internal/v1/*`）监听地址；勿暴露到公网 |
 | `ADMIN_GATEWAY_METRICS_URL` / `ADMIN_DELIVERY_METRICS_URL` | backend | 本机的 gateway/delivery | 管理状态聚合的指标端点 |
 | `GATEWAY_ADDR` | gateway | `:1910` | 网关监听地址 |
-| `BACKEND_URL` | gateway、delivery | `http://127.0.0.1:1906` | backend 内部 API 基础 URL |
+| `INTERNAL_SERVICE_URL` | gateway、delivery | `http://127.0.0.1:1906` | backend 内部 API 基础 URL |
 | `GATEWAY_ALLOWED_ORIGINS` | gateway | — | 浏览器客户端的 `Origin` 白名单（逗号分隔） |
 | `DELIVERY_ADDR` | delivery | `:1920` | 投递器监听地址 |
 | `GATEWAY_URL` | delivery | `http://127.0.0.1:1910` | 投递推送的网关基础 URL |
@@ -386,9 +416,15 @@ HTTP API 一览：
 ```bash
 go test ./...                # 单元测试（im/admin/me/routes…）
 just deps-setup              # 一次性：deps/*/go.mod.templ -> go.mod
+just dashboard               # 重新构建管理后台 bundle 到 web/dist（产物需提交）
 (cd deps/im/gateway && go vet . && go build .)
 (cd deps/im/delivery && go vet . && go build .)
 ```
+
+管理后台前端位于 `install/lib/im/app/dashboard/web/`（Preact +
+TanStack Query/Table + airway-ui 组件集副本）。提交的 `web/dist` bundle
+直接内嵌进插件二进制，宿主项目不需要任何 JavaScript 工具链；只有改动
+管理后台本身时才需要运行 `just dashboard` 并提交产物。
 
 测试覆盖：会话创建（单聊唯一性、成员校验）、消息持久化（幂等、
 违规内容屏蔽、outbox 事件）、资料查询、管理端点与路由注册。整套服务
