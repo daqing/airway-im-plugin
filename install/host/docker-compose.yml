@@ -33,10 +33,13 @@ services:
       IM_ADMIN_USERNAME: ${IM_ADMIN_USERNAME:-admin}
       IM_ADMIN_PASSWORD: ${IM_ADMIN_PASSWORD:-airway-im-local-admin-password}
       IM_AUTH_SECRET: ${IM_AUTH_SECRET:-airway-im-local-development-auth-secret}
+      IM_INTERNAL_ADDR: ":1906"
+      IM_GATEWAY_URL: http://gateway:1910
       ADMIN_GATEWAY_METRICS_URL: http://gateway:1910/metrics
       ADMIN_DELIVERY_METRICS_URL: http://delivery:1920/metrics
     ports:
       - "${BACKEND_PORT:-1905}:1905"
+      - 127.0.0.1:1906:1906
     volumes:
       - backend-data:/data
     healthcheck:

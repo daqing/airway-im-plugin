@@ -187,7 +187,7 @@ func TestAdminRevokesUserCredentials(t *testing.T) {
 	}
 }
 
-func TestAdminListsGroupConversationsAndMessages(t *testing.T) {
+func TestAdminListsConversationsAndMessages(t *testing.T) {
 	router := setupAdminRouter(t)
 	db := repo.CurrentDB()
 	now := time.Now().UTC().Truncate(time.Second)
@@ -198,20 +198,26 @@ func TestAdminListsGroupConversationsAndMessages(t *testing.T) {
 		INSERT INTO conversations
 		(id, kind, title, created_by, next_sequence, created_at, updated_at)
 		VALUES ('01J2Q7D4N5R8TK6VD3SZ1H0Y9M', 'group', 'Backend Team', 1, 2, ?, ?),
-		       ('01J2Q7D4N5R8TK6VD3SZ1H0Y9N', 'direct', NULL, 1, 1, ?, ?);
+		       ('01J2Q7D4N5R8TK6VD3SZ1H0Y9N', 'direct', NULL, 1, 2, ?, ?);
 		INSERT INTO conversation_members
 		(conversation_id, user_id, role, joined_at)
 		VALUES ('01J2Q7D4N5R8TK6VD3SZ1H0Y9M', 1, 'owner', ?),
-		       ('01J2Q7D4N5R8TK6VD3SZ1H0Y9M', 2, 'member', ?);
+		       ('01J2Q7D4N5R8TK6VD3SZ1H0Y9M', 2, 'member', ?),
+		       ('01J2Q7D4N5R8TK6VD3SZ1H0Y9N', 1, 'member', ?),
+		       ('01J2Q7D4N5R8TK6VD3SZ1H0Y9N', 2, 'member', ?);
 		INSERT INTO messages
 		(id, conversation_id, sender_id, content, content_type, sequence, created_at)
-		VALUES ('01J2Q8A4FQ8NA8R6YDJ2M98K3Q', '01J2Q7D4N5R8TK6VD3SZ1H0Y9M', 2, 'Hello team', 'text/plain', 1, ?)`,
-		now, now, now, now, now, now, now, now, now, now, now)
+		VALUES ('01J2Q8A4FQ8NA8R6YDJ2M98K3Q', '01J2Q7D4N5R8TK6VD3SZ1H0Y9M', 2, 'Hello team', 'text/plain', 1, ?),
+		       ('01J2Q8A4FQ8NA8R6YDJ2M98K3R', '01J2Q7D4N5R8TK6VD3SZ1H0Y9N', 1, 'Hi bob', 'text/plain', 1, ?)`,
+		now, now, now, now, now, now, now, now, now, now, now, now, now, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	token := loginAdmin(t, router)
+
+	// Default listing covers both kinds; direct conversations carry their
+	// participant pair.
 	request := httptest.NewRequest(http.MethodGet, "/admin/api/conversations", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	response := httptest.NewRecorder()
@@ -219,13 +225,55 @@ func TestAdminListsGroupConversationsAndMessages(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("list conversations status %d: %s", response.Code, response.Body.String())
 	}
-	for _, value := range []string{"Backend Team", `"member_count":2`, `"message_count":1`} {
+	for _, value := range []string{
+		"Backend Team",
+		`"kind":"group"`,
+		`"kind":"direct"`,
+		`"member_count":2`,
+		`"message_count":1`,
+		`"username":"bob"`,
+	} {
 		if !bytes.Contains(response.Body.Bytes(), []byte(value)) {
 			t.Fatalf("conversation response missing %q: %s", value, response.Body.String())
 		}
 	}
-	if bytes.Contains(response.Body.Bytes(), []byte(`"kind":"direct"`)) {
-		t.Fatalf("conversation response includes direct conversation: %s", response.Body.String())
+
+	// The kind filter narrows the listing to one kind.
+	for _, scenario := range []struct {
+		kind    string
+		present string
+		absent  string
+	}{
+		{kind: "group", present: `"kind":"group"`, absent: `"kind":"direct"`},
+		{kind: "direct", present: `"kind":"direct"`, absent: `"kind":"group"`},
+	} {
+		request = httptest.NewRequest(http.MethodGet, "/admin/api/conversations?kind="+scenario.kind, nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		response = httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("list %s conversations status %d: %s", scenario.kind, response.Code, response.Body.String())
+		}
+		if !bytes.Contains(response.Body.Bytes(), []byte(scenario.present)) {
+			t.Fatalf("%s conversation response missing %q: %s", scenario.kind, scenario.present, response.Body.String())
+		}
+		if bytes.Contains(response.Body.Bytes(), []byte(scenario.absent)) {
+			t.Fatalf("%s conversation response includes %q: %s", scenario.kind, scenario.absent, response.Body.String())
+		}
+	}
+
+	// Messages are listable for direct conversations too.
+	request = httptest.NewRequest(http.MethodGet, "/admin/api/conversations/01J2Q7D4N5R8TK6VD3SZ1H0Y9N/messages", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("list direct messages status %d: %s", response.Code, response.Body.String())
+	}
+	for _, value := range []string{"Hi bob", `"sender_username":"alice"`, `"sequence":1`} {
+		if !bytes.Contains(response.Body.Bytes(), []byte(value)) {
+			t.Fatalf("direct message response missing %q: %s", value, response.Body.String())
+		}
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "/admin/api/conversations/01J2Q7D4N5R8TK6VD3SZ1H0Y9M/messages", nil)
@@ -257,8 +305,21 @@ func TestAdminListsGroupConversationsAndMessages(t *testing.T) {
 	if err := db.Get(&illegal, "SELECT is_illegal FROM messages WHERE id = '01J2Q8A4FQ8NA8R6YDJ2M98K3Q'"); err != nil || !illegal {
 		t.Fatalf("message illegal state = %v, %v", illegal, err)
 	}
+
+	// Moderation covers direct conversation messages as well.
+	request = httptest.NewRequest(http.MethodPost, "/admin/api/messages/01J2Q8A4FQ8NA8R6YDJ2M98K3R/mark-illegal", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("moderate direct message status %d: %s", response.Code, response.Body.String())
+	}
+	var directTargets int
+	if err := db.Get(&directTargets, `SELECT COUNT(*) FROM outbox_events WHERE topic = 'message.moderated' AND aggregate_id = '01J2Q8A4FQ8NA8R6YDJ2M98K3R' AND payload LIKE '%user_uuids%'`); err != nil || directTargets != 1 {
+		t.Fatalf("direct moderation event count = %d, %v", directTargets, err)
+	}
 	var moderationEvents int
-	if err := db.Get(&moderationEvents, "SELECT COUNT(*) FROM outbox_events WHERE topic = 'message.moderated'"); err != nil || moderationEvents != 1 {
+	if err := db.Get(&moderationEvents, "SELECT COUNT(*) FROM outbox_events WHERE topic = 'message.moderated'"); err != nil || moderationEvents != 2 {
 		t.Fatalf("moderation event count = %d, %v", moderationEvents, err)
 	}
 }

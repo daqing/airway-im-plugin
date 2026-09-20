@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine AS builder
+FROM m.daocloud.io/docker.io/library/golang:1.26-alpine AS builder
 ARG ALPINE_MIRROR=mirrors.aliyun.com
 ARG GOPROXY=https://goproxy.cn,direct
 RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories
@@ -9,7 +9,7 @@ COPY go.mod ./go.mod
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/delivery .
 
-FROM alpine:3.22
+FROM m.daocloud.io/docker.io/library/alpine:3.22
 ARG ALPINE_MIRROR=mirrors.aliyun.com
 RUN sed -i "s/dl-cdn.alpinelinux.org/${ALPINE_MIRROR}/g" /etc/apk/repositories
 RUN apk add --no-cache ca-certificates tzdata
