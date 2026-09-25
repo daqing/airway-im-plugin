@@ -110,19 +110,19 @@ module AirwayIM
 
     # Add members (identified by uuid) to a group (owner/admin). Idempotent
     # for already-active members.
-    def add_members(conversation_id, member_conversation_ids)
+    def add_members(conversation_id, member_uuids)
       post("/api/v1/conversations/#{Util.escape_segment(conversation_id)}/members",
-           body: { member_conversation_ids: member_conversation_ids })
+           body: { member_uuids: member_uuids })
     end
 
-    # Remove members (identified by conversation_id) from a group (owner/admin; cannot
+    # Remove members (identified by uuid) from a group (owner/admin; cannot
     # remove self or the owner). Idempotent for members who are not active.
     # Returns the details after the last removal (the current details for an
     # empty list).
-    def remove_members(conversation_id, user_conversation_ids)
-      details = user_conversation_ids.empty? ? get_conversation(conversation_id) : nil
-      user_conversation_ids.each do |user_conversation_id|
-        details = remove_member(conversation_id, user_conversation_id)
+    def remove_members(conversation_id, user_uuids)
+      details = user_uuids.empty? ? get_conversation(conversation_id) : nil
+      user_uuids.each do |user_uuid|
+        details = remove_member(conversation_id, user_uuid)
       end
       details
     end

@@ -105,7 +105,9 @@ module AirwayIM
       client = with_server do |req|
         case req.method
         when "GET" then assert_equal "/api/v1/conversations/01%20AB", req.path
-        when "POST" then assert_equal "/api/v1/conversations/01%20AB/members", req.path
+        when "POST"
+          assert_equal "/api/v1/conversations/01%20AB/members", req.path
+          assert_equal({ "member_uuids" => ["uuid-carol"] }, JSON.parse(req.body))
         when "DELETE" then assert_equal "/api/v1/conversations/01%20AB/members/uuid%20carol", req.path
         end
         [200, envelope({ "conversation_uuid" => "01 AB", "type" => "group", "members" => [] })]
