@@ -206,6 +206,9 @@ Design contracts:
 | [`install/ignore/client/`](install/ignore/client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
 | [`install/ignore/sdk/ts/`](install/ignore/sdk/ts/) | JavaScript/TypeScript SDK (npm package `airway-im-sdk-ts`): typed REST client, realtime gateway, and sequence-based sync engine, with built-in WeChat Mini Program and browser adapters | — |
 | [`install/ignore/sdk/ruby/`](install/ignore/sdk/ruby/) | Ruby SDK (gem `airway-im-sdk-ruby`): credential signing/minting, REST client for the IM API, and admin API client for server-side Ruby applications | — |
+| [`install/ignore/sdk/php/`](install/ignore/sdk/php/) | PHP SDK (Composer package): zero-dependency REST client, credential minting, and admin API client for server-side PHP applications | — |
+| [`install/ignore/sdk/swift/`](install/ignore/sdk/swift/) | Swift 6 SDK (SwiftPM package `AirwayIM`): typed REST client, realtime gateway, and sequence-based sync engine for iOS / macOS apps and server-side Swift | — |
+| [`install/ignore/sdk/go/`](install/ignore/sdk/go/) | Go SDK (module `github.com/daqing/airway-im-sdk-go`): stdlib-only typed REST client, realtime gateway, and sequence-based sync engine for Go backends and client applications | — |
 | [`install/deps/im/docs/`](install/deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
 
 Key plugin packages (under `install/lib/im/`):
@@ -436,11 +439,14 @@ credential as the **first** application message:
 Endpoint guides: [`install/deps/im/docs/api/messages.md`](install/deps/im/docs/api/messages.md),
 [`install/deps/im/docs/api/me.md`](install/deps/im/docs/api/me.md), [`install/deps/im/docs/api/admin.md`](install/deps/im/docs/api/admin.md).
 
-Clients don't have to implement this contract by hand: the JS/TS SDK
-(`airway-im-sdk-ts`) under [`install/ignore/sdk/ts/`](install/ignore/sdk/ts/) wraps the REST API, the gateway
+Clients don't have to implement this contract by hand: SDKs under
+[`install/ignore/sdk/`](install/ignore/sdk/) wrap the REST API, the gateway
 protocol (first-frame auth, heartbeat, backoff reconnect, event dedupe), and
-sequence-based catch-up sync into a single typed `createIM()` facade, with
-built-in adapters for WeChat Mini Programs and browsers.
+sequence-based catch-up sync into typed facades — TypeScript
+(`airway-im-sdk-ts`, with built-in WeChat Mini Program and browser
+adapters), Swift 6 (`AirwayIM`), and Go (`github.com/daqing/airway-im-sdk-go`,
+standard library only). Server-side Ruby, PHP, and Swift packages cover
+credential minting, the REST API, and the admin API.
 
 ## Admin web console
 
