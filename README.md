@@ -228,7 +228,7 @@ Key plugin packages (under `install/lib/im/`):
 
 ## Setup
 
-Requirements: Go 1.26+, and SQLite locally (file or `:memory:`) or a
+Requirements: Go 1.27+, and SQLite locally (file or `:memory:`) or a
 MySQL/PostgreSQL server. Optional: Docker for containerized
 gateway/delivery (each ships a `Containerfile`).
 

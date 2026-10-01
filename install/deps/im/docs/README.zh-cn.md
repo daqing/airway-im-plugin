@@ -181,7 +181,7 @@ pending/published 计数与积压时长就取自 `published_at` —— 因此表
 
 ## 安装与启动
 
-环境要求：Go 1.26+，本地 SQLite（文件或 `:memory:`）或 MySQL/PostgreSQL
+环境要求：Go 1.27+，本地 SQLite（文件或 `:memory:`）或 MySQL/PostgreSQL
 服务。可选：Docker（gateway/delivery 各自附带 `Containerfile`，可容器化
 部署）。
 
