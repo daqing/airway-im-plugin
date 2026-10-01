@@ -124,8 +124,10 @@ Design contracts:
 - A generic `users` table (uuid, username, nickname, avatar URL, email,
   last-seen) is the identity source of truth for all IM APIs; rows are
   auto-registered the first time a valid credential authenticates.
-- Airway projects may sign credentials themselves (any language, no extra dependency)
-  or call `POST /internal/v1/credentials` to have the backend mint them.
+- Airway projects may sign credentials themselves (any language, no extra dependency),
+  call `POST /internal/v1/credentials` to have the backend mint them, or — when the
+  Airway backend is Go and embeds this plugin — mint in-process with
+  `implugin.IssueCredential` (no HTTP round trip, revocable).
 - `GET /api/v1/me` profile lookup by credential; credentials are never
   exposed in API responses, delivery events, or logs.
 
@@ -341,6 +343,17 @@ Node.js, Python, Ruby), and rotation rules are in
 Ruby applications can also use the SDK gem (`airway-im-sdk-ruby`,
 [`install/ignore/sdk/ruby/`](install/ignore/sdk/ruby/)), which wraps credential
 minting and the whole IM API.
+
+A Go Airway backend embedding this plugin can mint credentials in-process
+during its own login flow — no HTTP round trip to the internal listener, and
+the credential carries the user's `token_version` so it stays revocable:
+
+```go
+import implugin "github.com/daqing/airway-im-plugin"
+
+credential, expiresAt, err := implugin.IssueCredential("user-1", "alice", "Alice", "", 0)
+// 0 applies the 24-hour default TTL (implugin.DefaultCredentialTTL).
+```
 
 For local development, the quickest way to get a credential is the
 server-to-server minting endpoint on the internal listener:

@@ -91,7 +91,9 @@ pending/published 计数与积压时长就取自 `published_at` —— 因此表
 - 一张通用的 `users` 表（uuid、用户名、昵称、头像 URL、邮箱、最近活跃时间）
   是所有 IM API 的身份事实来源；用户行在凭证首次认证成功时自动注册。
 - Airway 项目可以自行签发凭证（任何语言均可实现，无额外依赖），也可以调用
-  `POST /internal/v1/credentials` 由 backend 代为签发。
+  `POST /internal/v1/credentials` 由 backend 代为签发；若 Airway 后端本身是
+  嵌入了本插件的 Go 应用，还可以直接调用 `implugin.IssueCredential`
+  在进程内签发（无 HTTP 往返、可吊销）。
 - `GET /api/v1/me` 按凭证查询用户资料；凭证不会出现在任何 API 响应、投递
   事件或日志中。
 
@@ -271,6 +273,16 @@ listener 提供（`IM_INTERNAL_ADDR`，默认 `127.0.0.1:1906`），公开端口
 认证成功时，用户会自动注册到 `users` 表 —— 没有单独的"开户"步骤。完整的
 凭证格式、Airway 侧签发示例（Go、Node.js、Python）与密钥轮换规则见
 [`deps/im/docs/design/identity.md`](design/identity.md)。
+
+嵌入本插件的 Go Airway 后端可以在自己的登录流程里进程内签发凭证 —— 无需
+HTTP 请求内部 listener，且签出的凭证携带用户的 `token_version`，可被吊销：
+
+```go
+import implugin "github.com/daqing/airway-im-plugin"
+
+credential, expiresAt, err := implugin.IssueCredential("user-1", "alice", "Alice", "", 0)
+// ttl 传 0 使用 24 小时默认值（implugin.DefaultCredentialTTL）。
+```
 
 部署拓扑里有四个角色：**第三方平台**（自己的前端：小程序或浏览器 JS；
 自己的后端：通常是 PHP 或 Java）、**Airway 项目**（`airway new` 创建的 Go

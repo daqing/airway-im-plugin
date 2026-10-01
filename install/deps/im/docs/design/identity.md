@@ -77,7 +77,7 @@ profile stored earlier.
 
 ## 4. Minting credentials
 
-There are two supported ways to produce a credential. Both yield the same
+There are three supported ways to produce a credential. All yield the same
 format; §4.1 explains which path fits which deployment topology.
 
 ### 4.1 Who signs: a server, never a client
@@ -266,6 +266,28 @@ Response:
   interface and callers reach it by its private address. Keep the
   listener off the public network; it must never be reachable by clients.
 
+### 4.4 Option C: mint in-process from the Airway backend (Go hosts)
+
+A Go Airway project that embeds this plugin runs in the same process as
+the IM backend, so its own login flow can skip the HTTP round trip of
+§4.3 and call the plugin directly:
+
+```go
+import implugin "github.com/daqing/airway-im-plugin"
+
+credential, expiresAt, err := implugin.IssueCredential("user-42", "alice", "Alice", "", 0)
+```
+
+`IssueCredential` reads `IM_AUTH_SECRET` from the environment, registers
+(or refreshes) the user at mint time, and returns a credential carrying
+the user's current `token_version` — revocable through the admin API
+(§9). A zero TTL applies the 24-hour default (`DefaultCredentialTTL`);
+values above 30 days (`MaxCredentialTTL`) are rejected. This path
+combines Option A's lack of a network hop with Option B's revocation
+support and is the preferred minting path for Go hosts; like Option A it
+is reserved for the Airway project's own backend, never exposed to
+third-party platform backends.
+
 ## 5. Client usage
 
 ### 5.1 HTTP API
@@ -388,9 +410,9 @@ Semantics and limits:
   can mint a fresh credential (carrying the new version) at any time — to
   keep a user out, the Airway project must stop minting for them.
 - Airway-minted credentials that omit the `token_version` claim (§4.2) are
-  unaffected. Deployments that need every client revocable should route
-  minting through `/internal/v1/credentials`, or have the Airway project track and
-  sign the version itself.
+  unaffected. Deployments that need every client revocable should mint
+  in-process (§4.4) or route minting through `/internal/v1/credentials`,
+  or have the Airway project track and sign the version itself.
 - With multiple gateway instances the kick reaches only the instance
   named by `IM_GATEWAY_URL`; connections elsewhere end at their next
   reconnect, when the revoked credential fails authentication.
