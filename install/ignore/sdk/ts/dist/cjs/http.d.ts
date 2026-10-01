@@ -1,6 +1,6 @@
 import { ErrorCode } from "./error.js";
 import type { IMAdapter, FileInput } from "./adapter.js";
-import type { ChatMessage, Conversation, ConversationDetails, ContentType, UploadResult, User } from "./types.js";
+import type { ChatMessage, ConversationSummary, ConversationDetails, ContentType, UploadResult, User } from "./types.js";
 export interface SendMessageOptions {
     contentType?: ContentType;
     /** Reuse only when retrying the same logical request (max 128 chars). */
@@ -34,29 +34,30 @@ export declare class IMHttpClient {
     private request;
     me(): Promise<User>;
     /** List my active group conversations (direct ones are excluded by the backend). */
-    listGroups(): Promise<Conversation[]>;
+    listGroups(): Promise<ConversationSummary[]>;
     /** Create or resolve a conversation. Direct requests are get-or-create (may return 200). */
-    createConversation(input: {
-        kind: "direct" | "group";
-        /** Other members by their stable identity uuid; the authenticated user must not be included. */
-        memberUuids: string[];
-        title?: string;
-    }): Promise<Conversation>;
+    private createConversation;
     /** Get-or-create a direct conversation with one other user, by uuid. */
-    createDirect(otherUserUuid: string): Promise<Conversation>;
+    createDirect(otherUserUUID: string): Promise<ConversationSummary>;
     /**
      * The direct conversation with one other user by uuid, or null when none
      * exists yet (read-only; createDirect get-or-creates instead). Combine with
      * listMessages to poll and display the history with that user.
      */
-    getDirectConversation(otherUserUuid: string): Promise<Conversation | null>;
+    getDirect(otherUserUUID: string): Promise<ConversationSummary | null>;
     /** Create a new group; the authenticated user becomes its owner. */
-    createGroup(title: string | null, memberUuids: string[]): Promise<Conversation>;
-    getConversation(uuid: string): Promise<ConversationDetails>;
+    createGroup(title: string | null, memberUUIDs: string[]): Promise<ConversationSummary>;
+    getConversation(conversationId: string): Promise<ConversationDetails>;
     /** Add members (by uuid) to a group (owner/admin; idempotent for already-active members). */
-    addMembers(conversationId: string, memberUuids: string[]): Promise<ConversationDetails>;
+    addMembers(conversationId: string, memberUUIDs: string[]): Promise<ConversationDetails>;
+    /**
+     * Remove members (by uuid) from a group (owner/admin; cannot remove self
+     * or the owner). Idempotent for members who are not active. Returns the
+     * details after the last removal (the current details for an empty list).
+     */
+    removeMembers(conversationId: string, userUUIDs: string[]): Promise<ConversationDetails>;
     /** Remove one member (by uuid) from a group (owner/admin; cannot remove self or the owner). */
-    removeMember(conversationId: string, userUuid: string): Promise<ConversationDetails>;
+    private removeMember;
     /** Ordered message page after a sequence; use for history and reconnect sync. */
     listMessages(conversationId: string, options?: ListMessagesOptions): Promise<ChatMessage[]>;
     /**
@@ -70,7 +71,7 @@ export declare class IMHttpClient {
      * get-or-create the direct conversation, then send. Same idempotency
      * semantics as sendMessage.
      */
-    sendDirectMessage(otherUserUuid: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
+    sendDirectMessage(otherUserUUID: string, content: string, options?: SendMessageOptions): Promise<ChatMessage>;
     private postMessage;
     /**
      * Upload a file (development-stage API: currently no auth middleware).

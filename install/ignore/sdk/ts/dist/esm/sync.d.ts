@@ -2,7 +2,7 @@ import type { IMHttpClient } from "./http.js";
 import type { StorageAdapter } from "./adapter.js";
 import type { ChatMessage, GatewayEvent } from "./types.js";
 export interface SyncHandlers {
-    onMessages: (messages: ChatMessage[], source: "history" | "realtime") => void;
+    onMessages: (messages: ChatMessage[]) => void;
     onMessageUpdated: (message: ChatMessage) => void;
 }
 export declare class SyncEngine {
@@ -29,7 +29,6 @@ export declare class SyncEngine {
     fetchFrom(conversationId: string, options?: {
         fromSequence?: number;
         limit?: number;
-        source?: "history" | "realtime";
         maxPages?: number;
     }): Promise<ChatMessage[]>;
     /** Serialized reload of one masked (moderated) message. */

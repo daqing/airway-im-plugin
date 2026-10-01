@@ -3,20 +3,28 @@
 // browsers (Vue / React / plain JS).
 //
 // Quick start:
-//   import { createIM } from "airway-im-sdk-ts";
-//   const im = createIM({ apiUrl: "https://im.example.com",
+//   import { createClient, wechatAdapter } from "airway-im-sdk-ts";
+//   const im = createClient({ apiUrl: "https://im.example.com",
 //                         wsUrl: "wss://im.example.com",
-//                         credential: hostIssuedCredential });       // WeChat
-//   // In the browser pass adapter: browserAdapter() explicitly.
-//   im.on("message", (msg) => console.log(msg.sender.username, msg.content));
+//                         credential: hostIssuedCredential,
+//                         adapter: wechatAdapter() });   // browsers/Node: browserAdapter()
 //   await im.connect();
+//   const direct = await im.createDirect(otherUserUUID);
+//   direct.on("message", (msg) => console.log(msg.sender.username, msg.content));
+//   await direct.send("hi");
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildUrl = exports.joinUrl = exports.randomId = exports.browserAdapter = exports.wechatAdapter = exports.ErrorCode = exports.IMError = exports.SyncEngine = exports.GatewaySocket = exports.IMHttpClient = exports.AirwayIM = void 0;
-exports.createIM = createIM;
+exports.buildUrl = exports.joinUrl = exports.randomId = exports.browserAdapter = exports.wechatAdapter = exports.ErrorCode = exports.IMError = exports.SyncEngine = exports.GatewaySocket = exports.InternalClient = exports.IMHttpClient = exports.GroupConversation = exports.DirectConversation = exports.Conversation = exports.AirwayIM = void 0;
+exports.createClient = createClient;
 var session_js_1 = require("./session.js");
 Object.defineProperty(exports, "AirwayIM", { enumerable: true, get: function () { return session_js_1.AirwayIM; } });
+var conversation_js_1 = require("./conversation.js");
+Object.defineProperty(exports, "Conversation", { enumerable: true, get: function () { return conversation_js_1.Conversation; } });
+Object.defineProperty(exports, "DirectConversation", { enumerable: true, get: function () { return conversation_js_1.DirectConversation; } });
+Object.defineProperty(exports, "GroupConversation", { enumerable: true, get: function () { return conversation_js_1.GroupConversation; } });
 var http_js_1 = require("./http.js");
 Object.defineProperty(exports, "IMHttpClient", { enumerable: true, get: function () { return http_js_1.IMHttpClient; } });
+var internal_js_1 = require("./internal.js");
+Object.defineProperty(exports, "InternalClient", { enumerable: true, get: function () { return internal_js_1.InternalClient; } });
 var gateway_js_1 = require("./gateway.js");
 Object.defineProperty(exports, "GatewaySocket", { enumerable: true, get: function () { return gateway_js_1.GatewaySocket; } });
 var sync_js_1 = require("./sync.js");
@@ -33,7 +41,8 @@ Object.defineProperty(exports, "randomId", { enumerable: true, get: function () 
 Object.defineProperty(exports, "joinUrl", { enumerable: true, get: function () { return util_js_1.joinUrl; } });
 Object.defineProperty(exports, "buildUrl", { enumerable: true, get: function () { return util_js_1.buildUrl; } });
 const session_js_2 = require("./session.js");
-/** Create an SDK instance (defaults to the WeChat Mini Program adapter). */
-function createIM(options) {
+/** Create an SDK instance; adapter is required (wechatAdapter() /
+ * browserAdapter() / custom). Throws when it is missing. */
+function createClient(options) {
     return new session_js_2.AirwayIM(options);
 }

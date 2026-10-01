@@ -1,6 +1,6 @@
 {
   "name": "airway-im-sdk-ts",
-  "version": "0.4.1",
+  "version": "0.7.0",
   "description": "Airway IM SDK for JavaScript/TypeScript: typed REST client, WebSocket gateway, and sequence-based sync engine for WeChat Mini Programs and browsers",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
@@ -22,7 +22,7 @@
     "clean": "rm -rf dist",
     "build": "npm run build:esm && npm run build:cjs",
     "build:esm": "tsc -p tsconfig.esm.json",
-    "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/write-cjs-package.js",
+    "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/write-dist-package-json.js",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
     "verify": "node test/e2e.node.ts"
   },
@@ -43,5 +43,8 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "airway-im-sdk-ts": "link:"
   }
 }

@@ -4,9 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  airway-im-sdk-ts: 'link:'
+
 importers:
 
   .:
+    dependencies:
+      airway-im-sdk-ts:
+        specifier: 'link:'
+        version: 'link:'
     devDependencies:
       '@types/node':
         specifier: ^24.0.0

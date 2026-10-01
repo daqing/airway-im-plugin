@@ -11,8 +11,6 @@ in an Airway host app is all it takes to run the whole stack.
 The plugin authenticates users through Airway-signed HMAC credentials: the host
 application signs its `(name, uuid)` identity pair, and the plugin verifies
 it statelessly.
-A Chinese version of this document is available at
-[`install/deps/im/docs/README.zh-cn.md`](install/deps/im/docs/README.zh-cn.md).
 
 ## Table of contents
 
@@ -55,10 +53,40 @@ poll/ack in step 2, the gateway's auth check, credential minting) is served
 on a separate listener that defaults to loopback only (`IM_INTERNAL_ADDR`,
 default `127.0.0.1:1906`); it is never mounted on the public port.
 
-WebSocket delivery is a latency optimization, never the durable copy of a
-message: offline clients recover through the sequence-based synchronization
-API. Delivery is at-least-once; clients deduplicate by `message_id` /
-`event_id` and reorder by `sequence`.
+Polling is unconditional: a fixed ticker (`DELIVERY_POLL_INTERVAL_MS`,
+default 500 ms) fires whether or not any client is connected, and the worker
+never checks who is online — an empty outbox makes a poll a single query
+returning an empty list, while pending events are all pushed to the gateway.
+The gateway matches each event's target user uuids against its in-memory
+connection index and reports the delivered count; `delivered: 0` (every
+recipient offline) is still a success. The worker then acknowledges the
+event, the backend marks it published, and nothing is retried: there is no
+per-recipient offline queue, so messages created while no consumer is
+connected cost one matching-nothing push each and leave no backlog. The
+design deliberately skips no push — an online check before pushing would
+race with reconnects and save only a loopback call. WebSocket delivery
+remains a latency optimization, never the durable copy of a message: the
+durable copy is the message row committed in step 1's transaction, and
+offline clients recover it through the sequence-based synchronization API.
+Delivery is at-least-once; clients deduplicate by `message_id` / `event_id`
+and reorder by `sequence`.
+
+The outbox itself is an ordinary table, `outbox_events`, written in the
+same transaction as the message; each row carries the topic, the aggregate
+id, the JSON payload, `created_at`, `published_at` (null while pending),
+and an `attempts` counter. A poll is a pure read — up to 100 pending rows,
+no mutations — and polling clears nothing. An event leaves the pending set
+only through its own ack, which the worker issues after that event's
+gateway push returned 200; the ack sets `published_at` and increments
+`attempts`. It is a soft mark, never a row deletion. Acks are strictly
+one-by-one rather than batch: when a push fails mid-batch, the events
+before it are already acknowledged while it and everything after it stay
+pending and are re-fetched on the next poll; a crash between push and ack
+re-delivers the event later. That window is where the at-least-once
+semantics above come from. Published rows are never removed — the admin
+console derives its pending/published counts and backlog age from
+`published_at` — so the table grows with message volume; add a retention
+sweep for old published rows if that ever matters.
 
 Design contracts:
 
@@ -178,6 +206,9 @@ Design contracts:
 | [`install/ignore/client/`](install/ignore/client/) | TypeScript demo client: multi-user group chat TUI + scripted end-to-end completeness proof | — |
 | [`install/ignore/sdk/ts/`](install/ignore/sdk/ts/) | JavaScript/TypeScript SDK (npm package `airway-im-sdk-ts`): typed REST client, realtime gateway, and sequence-based sync engine, with built-in WeChat Mini Program and browser adapters | — |
 | [`install/ignore/sdk/ruby/`](install/ignore/sdk/ruby/) | Ruby SDK (gem `airway-im-sdk-ruby`): credential signing/minting, REST client for the IM API, and admin API client for server-side Ruby applications | — |
+| [`install/ignore/sdk/php/`](install/ignore/sdk/php/) | PHP SDK (Composer package): zero-dependency REST client, credential minting, and admin API client for server-side PHP applications | — |
+| [`install/ignore/sdk/swift/`](install/ignore/sdk/swift/) | Swift 6 SDK (SwiftPM package `AirwayIM`): typed REST client, realtime gateway, and sequence-based sync engine for iOS / macOS apps and server-side Swift | — |
+| [`install/ignore/sdk/go/`](install/ignore/sdk/go/) | Go SDK (module `github.com/daqing/airway-im-sdk-go`): stdlib-only typed REST client, realtime gateway, and sequence-based sync engine for Go backends and client applications | — |
 | [`install/deps/im/docs/`](install/deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
 
 Key plugin packages (under `install/lib/im/`):
@@ -197,7 +228,7 @@ Key plugin packages (under `install/lib/im/`):
 
 ## Setup
 
-Requirements: Go 1.26+, and SQLite locally (file or `:memory:`) or a
+Requirements: Go 1.27+, and SQLite locally (file or `:memory:`) or a
 MySQL/PostgreSQL server. Optional: Docker for containerized
 gateway/delivery (each ships a `Containerfile`).
 
@@ -408,11 +439,14 @@ credential as the **first** application message:
 Endpoint guides: [`install/deps/im/docs/api/messages.md`](install/deps/im/docs/api/messages.md),
 [`install/deps/im/docs/api/me.md`](install/deps/im/docs/api/me.md), [`install/deps/im/docs/api/admin.md`](install/deps/im/docs/api/admin.md).
 
-Clients don't have to implement this contract by hand: the JS/TS SDK
-(`airway-im-sdk-ts`) under [`install/ignore/sdk/ts/`](install/ignore/sdk/ts/) wraps the REST API, the gateway
+Clients don't have to implement this contract by hand: SDKs under
+[`install/ignore/sdk/`](install/ignore/sdk/) wrap the REST API, the gateway
 protocol (first-frame auth, heartbeat, backoff reconnect, event dedupe), and
-sequence-based catch-up sync into a single typed `createIM()` facade, with
-built-in adapters for WeChat Mini Programs and browsers.
+sequence-based catch-up sync into typed facades — TypeScript
+(`airway-im-sdk-ts`, with built-in WeChat Mini Program and browser
+adapters), Swift 6 (`AirwayIM`), and Go (`github.com/daqing/airway-im-sdk-go`,
+standard library only). Server-side Ruby, PHP, and Swift packages cover
+credential minting, the REST API, and the admin API.
 
 ## Admin web console
 
@@ -483,4 +517,8 @@ outbox emission), profile lookup, admin endpoints, and route registration.
 The full stack was additionally verified end-to-end locally:
 credential minting → group creation → message send → outbox poll → gateway
 push → WebSocket receipt → outbox ack.
+
+---
+
+中文版本：[install/deps/im/docs/README.zh-cn.md](install/deps/im/docs/README.zh-cn.md)
 

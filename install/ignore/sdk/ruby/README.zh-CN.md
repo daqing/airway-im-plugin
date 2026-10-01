@@ -77,21 +77,25 @@ im = AirwayIM::Client.new(
   get_credential: -> { mint_fresh_credential },  # 可选：凭证失效时自动换新并重试一次
 )
 
-im.me                                     # 当前用户资料
-conversation = im.create_direct("user-2") # 与 uuid 为 user-2 的用户单聊（get-or-create）
-im.direct_conversation("user-2")          # 与 user-2 的已有单聊会话，没有则返回 nil（只读）
-im.create_group(member_uuids: ["user-2", "user-3"], title: "Backend Team")
+direct = im.create_direct("user-2")       # DirectConversation 会话对象（get-or-create）
+im.get_direct("user-2")      # 与 user-2 的已有会话对象，没有则返回 nil（只读）
+group = im.create_group(member_uuids: ["user-2", "user-3"], title: "Backend Team")
 im.list_groups                            # 我加入的群列表
-im.conversation(conversation["id"])       # 会话类型 + 成员及角色
+group.details                             # 会话类型 + 成员及角色
+im.open_conversation(group.id)            # 按任意会话 id 打开会话对象
 
 # 发送消息：自动生成 Idempotency-Key，网络失败自动用同一 key 重试，不会重发
-im.send_message(conversation["id"], "你好", content_type: "text/plain")
+direct.send_message("你好")
 message = im.send_direct_message("user-2", "你好") # 一步到位：get-or-create 单聊会话后直接发送
-message.sequence                                  # Message 是带读取方法的 Hash，message["sequence"] 也可以
+message.sequence                          # Message 是带读取方法的 Hash，message["sequence"] 也可以
+
+group.add_members(["user-4"])             # 群专属操作直接在会话对象上
+group.remove_members("user-4")
+group.details                             # 成员及角色，实时来自 API
 
 # 历史 / 序列同步（掉线后从上次游标补齐，升序返回）
-im.messages(conversation["id"], after_sequence: 42, limit: 100)
-im.each_message(conversation["id"]).each { |msg| … }   # 自动翻页遍历全部历史
+im.list_messages(direct.id, after_sequence: 42, limit: 100)
+im.each_message(direct.id).each { |msg| … }   # 自动翻页遍历全部历史
 
 im.upload_file("/path/to/avatar.png", dir: "avatars")   # 返回 {key, url, size}
 im.storage_url("avatars/202609/xxx.png")                # 下载地址
@@ -104,20 +108,29 @@ im.storage_url("avatars/202609/xxx.png")                # 下载地址
 
 ### `AirwayIM::Client`（公共 API，默认 `:1905`）
 
+方法名与 TS SDK 一一对应（这边 snake_case，那边 camelCase）：
+`create_direct` ↔ `createDirect`、`get_direct` ↔
+`getDirectConversation`、`create_group` ↔
+`createGroup`、`list_messages` ↔ `listMessages` 等。会话对象同样齐备——
+`DirectConversation` / `GroupConversation` 提供 `send_message` /
+`list_messages` / `each_message` / `details`（群会话另有 `add_members` /
+`remove_members`），以及 `open_conversation(id)`；缺的只是实时
+层——TS 会话对象上的 `on("message")` 订阅、WebSocket 网关和同步引擎，
+v1 的 Ruby SDK 以轮询 `each_message` 代替。
+
 | 方法 | 对应接口 |
 | --- | --- |
 | `me` | `GET /api/v1/me` |
 | `list_groups` | `GET /api/v1/conversations?type=group` |
-| `create_conversation(kind:, member_uuids:, title: nil)` | `POST /api/v1/conversations` |
 | `create_direct(other_uuid)` | 同上（direct get-or-create） |
-| `direct_conversation(other_uuid)` | `GET /api/v1/conversations/direct/:user_uuid`（没有则返回 nil） |
+| `get_direct(other_uuid)` | `GET /api/v1/conversations/direct/:user_uuid`（没有则返回 nil） |
 | `create_group(member_uuids:, title: nil)` | `POST /api/v1/group` |
-| `conversation(uuid)` | `GET /api/v1/conversations/:uuid` |
-| `add_members(uuid, member_uuids)` | `POST .../members`（owner/admin，幂等） |
-| `remove_member(uuid, user_uuid)` | `DELETE .../members/:user_uuid`（owner/admin） |
-| `messages(uuid, after_sequence: nil, limit: nil)` | `GET .../messages`（原始分页，limit 1–200） |
-| `each_message(uuid, after_sequence: 0, page_size: 100)` | 自动翻页的 Enumerator，升序遍历历史 |
-| `send_message(conversation_id, content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
+| `open_conversation(conversation_id)` | `GET /api/v1/conversations/:uuid`，以会话对象返回（从详情解析类型/标题） |
+| `add_members(conversation_id, member_uuids)` | `POST .../members`（owner/admin，幂等） |
+| `remove_members(conversation_id, user_uuids)` | `DELETE .../members/:user_uuid`（owner/admin） |
+| `list_messages(conversation_id, after_sequence: nil, limit: nil)` | `GET .../messages`（原始分页，limit 1–200） |
+| `each_message(conversation_id, after_sequence: 0, page_size: 100)` | 自动翻页的 Enumerator，升序遍历历史 |
+| `send_group_message(conversation_id, content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
 | `send_direct_message(other_uuid, content, …)` | Get-or-create 单聊会话后走 `POST /api/v1/messages` |
 | `upload_file(path 或 IO, filename:, dir:)` | `POST /api/v1/storage`（multipart） |
 | `storage_url(key)` | 文件下载地址 |
@@ -127,9 +140,28 @@ callback，收到 `10001`/401 时自动换新凭证并重试一次；`credential
 更新）、`timeout`（秒，默认 15）。`content_type` 支持 `text/markdown`（默认）
 与 `text/plain`；内容上限 32768 字节，服务端会把 CRLF 归一为 LF。
 
+### 会话对象
+
+`create_direct` 和 `get_direct` 返回 `AirwayIM::DirectConversation`；
+`create_group` 和 `open_conversation` 通过详情查询解析为
+`AirwayIM::GroupConversation`（或 `DirectConversation`）。每个会话对象都携带
+`id` 与 `kind`，并把会话 API 收拢到自身：
+
+| 会话对象方法 | 委托到 |
+| --- | --- |
+| `send_message(content, content_type:, idempotency_key:, retries:)` | `POST /api/v1/messages` |
+| `list_messages(after_sequence:, limit:)` | `list_messages(id, …)` |
+| `each_message(after_sequence: 0, page_size: 100)` | `each_message(id, …)` |
+| `add_members(member_uuids)` —— 仅群 | `add_members(id, member_uuids)` |
+| `remove_members(user_uuids)` —— 仅群 | `remove_members(id, user_uuids)` |
+| `details` | `GET /api/v1/conversations/:uuid` |
+
+`group.title` 携带创建时的标题（未传或按 id 打开时为 `nil`）；`details`
+返回实时值。
+
 ### Message 对象
 
-`send_message`、`send_direct_message`、`messages`、`each_message` 返回
+`send_message`、`send_direct_message`、`list_messages`、`each_message` 返回
 `AirwayIM::Message`——一个 Hash 子类，`message["id"]`、`message.id`、
 `message.sender.uuid` 均可使用：
 
@@ -189,7 +221,7 @@ callback，收到 `10001`/401 时自动换新凭证并重试一次；`credential
 
 ```ruby
 begin
-  im.send_message(id, "hi")
+  im.send_group_message(id, "hi")
 rescue AirwayIM::Error => e
   if e.auth_error?          # 10001 / 401：凭证无效或过期，等待续期或重新铸造
   elsif e.code == AirwayIM::ErrorCode::PERMISSION_DENIED      # 10005
@@ -208,7 +240,7 @@ end
 
 1. 用 `messages(uuid, after_sequence: 上次游标)` 或 `each_message` 补齐增量；
 2. 按 `msg["id"]` 幂等处理，按 `sequence` 排序；
-3. 发送以 `send_message` 的返回值为准，重试交给 SDK（同一
+3. 发送以 `send_group_message` 的返回值为准，重试交给 SDK（同一
    `Idempotency-Key` 保证不重发）。
 
 客户端（小程序/浏览器）的实时接收与自动补洞由

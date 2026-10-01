@@ -67,10 +67,12 @@ class GatewaySocket {
             ws = this.adapter.socket(`${this.url}/ws`);
         }
         catch (err) {
-            this.callbacks.onError?.(err);
+            // The socket factory throwing means the adapter itself is unusable in
+            // this runtime (e.g. the default wechatAdapter without global wx) — a
+            // permanent misconfiguration, not a transient network fault. Fail fast:
+            // no reconnect loop, the error propagates out of connect().
             this.setStatus("offline");
-            this.scheduleReconnect();
-            return;
+            throw err;
         }
         this.socket = ws;
         ws.onOpen(() => {
