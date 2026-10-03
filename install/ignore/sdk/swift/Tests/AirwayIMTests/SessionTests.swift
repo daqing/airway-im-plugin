@@ -147,6 +147,54 @@ struct SessionTests {
         try await waitFor("disconnected") { im.connectionStatus == .closed }
     }
 
+    @Test("host notifications arrive with their payload, IM events do not")
+    func hostNotifications() async throws {
+        let server = try Self.makeServer()
+        server.start()
+        defer { server.stop() }
+
+        final class HostBox: @unchecked Sendable {
+            let fakes = Capture<FakeWebSocketTransport>()
+            let notifications = Capture<HostNotification>()
+        }
+        let box = HostBox()
+        let im = AirwayIM(
+            apiURL: server.baseURL,
+            wsURL: "ws://unused",
+            credential: "c",
+            persistSequences: false,
+            socketFactory: { [box] _ in
+                let fake = FakeWebSocketTransport.make()
+                fake.onSend = { fake, text in
+                    if text.contains("\"auth\"") {
+                        Task { await fake.serverEnqueue(#"{"code":0,"data":"OK"}"#) }
+                    }
+                }
+                box.fakes.append(fake)
+                return fake
+            })
+        _ = im.onHostNotification { [box] in box.notifications.append($0) }
+
+        await im.connect()
+        let fake = try await waitForValue("gateway transport") { box.fakes.all.first }
+        try await waitFor("online") { await im.isOnline }
+
+        await fake.serverEnqueue(#"{"event_id":"01HOST1","event":"host.friend_request","conversation_id":"","data":{"from_uuid":"u-a"},"targets":{"user_uuids":["u-me"]}}"#)
+        try await waitFor("host notification") { !box.notifications.all.isEmpty }
+        let notification = box.notifications.all[0]
+        #expect(notification.event == "host.friend_request")
+        #expect(notification.data?["from_uuid"]?.stringValue == "u-a")
+
+        // IM domain events must not surface as host notifications.
+        await fake.serverEnqueue(eventFrame(
+            eventId: "e-im", conversationId: "01GROUP01", sequence: 1, messageId: "01MSG1"))
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(box.notifications.all.count == 1)
+
+        await im.disconnect()
+        try await waitFor("disconnected") { im.connectionStatus == .closed }
+    }
+
     @Test("a conversation's first onMessage listener starts tracking automatically")
     func autoTrack() async throws {
         let server = try Self.makeServer()

@@ -118,11 +118,43 @@ public struct GatewayEvent: Sendable, Codable, Equatable {
     public let sequence: Int?
     public let addedUserUuids: [String]?
     public let removedUserUuid: String?
+    public let data: JSONValue?
     public let targets: Targets?
+
+    public init(
+        eventId: String,
+        event: String,
+        messageId: String? = nil,
+        conversationId: String,
+        sequence: Int? = nil,
+        addedUserUuids: [String]? = nil,
+        removedUserUuid: String? = nil,
+        data: JSONValue? = nil,
+        targets: Targets? = nil
+    ) {
+        self.eventId = eventId
+        self.event = event
+        self.messageId = messageId
+        self.conversationId = conversationId
+        self.sequence = sequence
+        self.addedUserUuids = addedUserUuids
+        self.removedUserUuid = removedUserUuid
+        self.data = data
+        self.targets = targets
+    }
 
     public struct Targets: Sendable, Codable, Equatable {
         public let userUuids: [String]
     }
+}
+
+/// A host-domain notification pushed through `POST /internal/v1/notify`
+/// (or the in-process `NotifyUsers`): any event the host platform defines,
+/// with a free-form JSON payload. Advisory delivery — pair with a pull
+/// endpoint for anything offline users must not miss.
+public struct HostNotification: Sendable, Equatable {
+    public let event: String
+    public let data: JSONValue?
 }
 
 /// Well-known gateway event names (the wire format is open; unknown

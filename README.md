@@ -370,6 +370,37 @@ Mint a second credential with a different `uuid`/`name` (e.g. bob), then
 use the returned credentials with the IM API. Credentials default to a
 24-hour TTL; mint fresh ones as needed.
 
+## Host notifications
+
+Host platforms can push their own domain events — friend requests, mail
+alerts, anything — to specific users over the same authenticated WebSocket
+gateway chat uses, instead of every host building its own push channel:
+
+```go
+// Go hosts, in-process (like IssueCredential)
+eventID, err := implugin.NotifyUsers(
+    []string{"user-2"}, "host.friend_request",
+    map[string]any{"from_uuid": "user-1", "from_nickname": "Alice"})
+```
+
+Non-Go hosts call the internal endpoint (shared internal secret required):
+
+```bash
+curl -sX POST http://127.0.0.1:1906/internal/v1/notify \
+  -H "X-IM-Internal-Secret: <IM_INTERNAL_SECRET>" \
+  -H 'Content-Type: application/json' \
+  -d '{"user_uuids":["user-2"],"event":"host.friend_request","data":{"from_uuid":"user-1"}}'
+# → {"code":0,"data":{"event_id":"01J…"},"message":null}
+```
+
+Recipients receive the standard frame with a free-form `data` payload; the
+Swift SDK surfaces it via `onHostNotification`. Events ride the existing
+outbox → delivery → gateway pipeline, so delivery is at-least-once with the
+usual event-id dedupe. Notifications are advisory: online recipients get
+them in real time, offline recipients are not replayed — pair each event
+with a pull endpoint clients load on demand. Limits: 100 recipients per
+event, event names ≤ 64 chars, `data` ≤ 4 KiB.
+
 ## Using the IM API
 
 All endpoints answer with the standard envelope

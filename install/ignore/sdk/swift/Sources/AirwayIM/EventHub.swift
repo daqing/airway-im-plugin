@@ -13,6 +13,7 @@ final class EventHub: @unchecked Sendable {
     let messageUpdatedListeners = ListenerList<ChatMessage>()
     let membersAddedListeners = ListenerList<MembersAddedInfo>()
     let membersRemovedListeners = ListenerList<MembersRemovedInfo>()
+    let hostNotificationListeners = ListenerList<HostNotification>()
     let readyListeners = ListenerList<Void>()
 
     private let statusBox = LockedBox(ConnectionStatus.closed)
@@ -81,6 +82,10 @@ final class EventHub: @unchecked Sendable {
     func emitMembersRemoved(_ info: MembersRemovedInfo) {
         membersRemovedListeners.emit(info)
         registry.conversation(info.conversationId)?.emitLocalMembersRemoved(info)
+    }
+
+    func emitHostNotification(_ notification: HostNotification) {
+        hostNotificationListeners.emit(notification)
     }
 }
 

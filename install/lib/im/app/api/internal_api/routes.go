@@ -8,4 +8,5 @@ func Routes(r *gin.RouterGroup) {
 	group.POST("/credentials", IssueCredential)
 	group.GET("/outbox", Outbox)
 	group.POST("/outbox/:id/ack", AckOutbox)
+	group.POST("/notify", Notify)
 }

@@ -167,6 +167,15 @@ public actor AirwayIM {
         hub.rawEventListeners.add(handler)
     }
 
+    /// Host-domain notifications pushed via `POST /internal/v1/notify` (or
+    /// the in-process `NotifyUsers`): any event name the host platform
+    /// defines with a free-form JSON payload. The four IM domain events are
+    /// routed to their dedicated handlers and never appear here.
+    @discardableResult
+    public nonisolated func onHostNotification(_ handler: @escaping @Sendable (HostNotification) -> Void) -> Subscription {
+        hub.hostNotificationListeners.add(handler)
+    }
+
     /// Latest reported connection status (`.closed` before connecting).
     public nonisolated var connectionStatus: ConnectionStatus {
         hub.status
@@ -398,7 +407,7 @@ public actor AirwayIM {
                     event: event))
             }
         default:
-            break
+            hub.emitHostNotification(HostNotification(event: event.event, data: event.data))
         }
     }
 
