@@ -1,0 +1,3 @@
+[submodule "install/ignore/sdk/go"]
+	path = install/ignore/sdk/go
+	url = https://github.com/daqing/airway-im-sdk-go

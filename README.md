@@ -210,7 +210,7 @@ Design contracts:
 | [`install/ignore/sdk/ruby/`](install/ignore/sdk/ruby/) | Ruby SDK (gem `airway-im-sdk-ruby`): credential signing/minting, REST client for the IM API, and admin API client for server-side Ruby applications | — |
 | [`install/ignore/sdk/php/`](install/ignore/sdk/php/) | PHP SDK (Composer package): zero-dependency REST client, credential minting, and admin API client for server-side PHP applications | — |
 | [`install/ignore/sdk/swift/`](install/ignore/sdk/swift/) | Swift 6 SDK (SwiftPM package `AirwayIM`): typed REST client, realtime gateway, and sequence-based sync engine for iOS / macOS apps and server-side Swift | — |
-| [`install/ignore/sdk/go/`](install/ignore/sdk/go/) | Go SDK (module `github.com/daqing/airway-im-sdk-go`): stdlib-only typed REST client, realtime gateway, and sequence-based sync engine for Go backends and client applications | — |
+| [`install/ignore/sdk/go/`](install/ignore/sdk/go/) | Go SDK (module `github.com/daqing/airway-im-sdk-go`): stdlib-only typed REST client, realtime gateway, and sequence-based sync engine for Go backends and client applications. Git submodule of the standalone repo [daqing/airway-im-sdk-go](https://github.com/daqing/airway-im-sdk-go) — clone with `--recursive` or run `git submodule update --init` | — |
 | [`install/deps/im/docs/`](install/deps/im/docs/) | Design docs, API guides, OpenAPI contract, landing page (`index.html`), 中文文档 | — |
 
 Key plugin packages (under `install/lib/im/`):
