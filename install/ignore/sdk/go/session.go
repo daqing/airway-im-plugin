@@ -232,6 +232,15 @@ func (s *Session) OnMembersRemoved(handler func(MembersRemovedInfo)) *Subscripti
 	return s.hub.membersRemovedListeners.add(handler)
 }
 
+// OnHostNotification subscribes to host-domain notifications pushed via
+// POST /internal/v1/notify (or the in-process NotifyUsers): any event name
+// the host platform defines with a free-form JSON payload. The four IM
+// domain events are routed to their dedicated handlers and never appear
+// here.
+func (s *Session) OnHostNotification(handler func(HostNotification)) *Subscription {
+	return s.hub.hostNotificationListeners.add(handler)
+}
+
 // OnStatus observes connection lifecycle changes.
 func (s *Session) OnStatus(handler func(ConnectionStatus)) *Subscription {
 	return s.hub.statusListeners.add(handler)
@@ -350,6 +359,8 @@ func (s *Session) handleEvent(ctx context.Context, event GatewayEvent) {
 				Event:           event,
 			})
 		}
+	default:
+		s.hub.emitHostNotification(HostNotification{Event: event.Event, Data: event.Data})
 	}
 }
 

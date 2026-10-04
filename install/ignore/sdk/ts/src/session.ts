@@ -17,6 +17,7 @@ import type {
   ConversationDetails,
   ConversationKind,
   GatewayEvent,
+  HostNotification,
   UploadResult,
   User,
 } from "./types.js";
@@ -71,6 +72,11 @@ export interface SessionEvents {
   "message.updated": (message: ChatMessage) => void;
   "members.added": (info: MembersAddedInfo) => void;
   "members.removed": (info: MembersRemovedInfo) => void;
+  /** Host-domain notifications pushed via `InternalClient.notify` (or
+   * `POST /internal/v1/notify`): any event name the host platform defines
+   * with a free-form JSON payload. The four IM domain events are routed to
+   * their dedicated handlers and never appear here. */
+  "host.notification": (notification: HostNotification) => void;
   status: (status: ConnectionStatus) => void;
   error: (error: Error) => void;
   /** Every raw gateway frame, including events for untracked conversations. */
@@ -260,6 +266,7 @@ export class AirwayIM {
         }
         break;
       default:
+        this.emit("host.notification", { event: event.event, data: event.data });
         break;
     }
   }

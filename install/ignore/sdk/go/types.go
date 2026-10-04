@@ -146,14 +146,26 @@ type GatewayTargets struct {
 // dedupe by EventID (the SDK's gateway client already does). Zero-value
 // optional fields (MessageID, Sequence 0, empty slices) mean absent.
 type GatewayEvent struct {
-	EventID         string         `json:"event_id"`
-	Event           string         `json:"event"`
-	MessageID       string         `json:"message_id"`
-	ConversationID  string         `json:"conversation_id"`
-	Sequence        int64          `json:"sequence"`
-	AddedUserUUIDs  []string       `json:"added_user_uuids"`
-	RemovedUserUUID string         `json:"removed_user_uuid"`
-	Targets         GatewayTargets `json:"targets"`
+	EventID         string   `json:"event_id"`
+	Event           string   `json:"event"`
+	MessageID       string   `json:"message_id"`
+	ConversationID  string   `json:"conversation_id"`
+	Sequence        int64    `json:"sequence"`
+	AddedUserUUIDs  []string `json:"added_user_uuids"`
+	RemovedUserUUID string   `json:"removed_user_uuid"`
+	// Data is the free-form payload of host-domain notifications (empty for
+	// the four IM domain events).
+	Data    JSONValue      `json:"data"`
+	Targets GatewayTargets `json:"targets"`
+}
+
+// HostNotification is a host-domain notification pushed through
+// POST /internal/v1/notify (or the in-process NotifyUsers): any event the
+// host platform defines, with a free-form JSON payload. Advisory delivery
+// — pair with a pull endpoint for anything offline users must not miss.
+type HostNotification struct {
+	Event string
+	Data  JSONValue
 }
 
 // MembersAddedInfo is the payload of the members-added notification.

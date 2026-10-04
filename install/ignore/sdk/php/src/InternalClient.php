@@ -19,6 +19,13 @@ namespace AirwayIM;
  *
  * Minted credentials carry the user's current token_version and are
  * therefore revocable through the admin API.
+ *
+ * It also pushes host-domain notifications (friend requests, mail alerts,
+ * …) to your users over the IM WebSocket gateway:
+ *
+ *   $eventId = $internal->notifyUsers(
+ *       ['user-2'], 'host.friend_request', ['from_uuid' => 'user-1'],
+ *   );
  */
 final class InternalClient
 {
@@ -66,5 +73,27 @@ final class InternalClient
             (string)($data['credential'] ?? ''),
             is_string($data['expires_at'] ?? null) ? $data['expires_at'] : null
         );
+    }
+
+    /**
+     * Push a host-domain notification to the given users over the IM
+     * WebSocket gateway; returns the event id. $event is a free-form name
+     * (conventionally prefixed "host.", e.g. "host.friend_request") and
+     * $data any JSON object. Server-side limits: at most 100 recipients,
+     * event name 1–64 chars, encoded data at most 4 KiB. Delivery is
+     * advisory — online recipients receive the frame in real time, offline
+     * recipients are not replayed, so pair notifications with a pull
+     * endpoint clients can load on demand.
+     */
+    public function notifyUsers(array $userUuids, string $event, array $data): string
+    {
+        $response = (array)$this->http->request(
+            'POST',
+            '/internal/v1/notify',
+            ['X-IM-Internal-Secret' => $this->internalSecret],
+            null,
+            ['user_uuids' => array_values($userUuids), 'event' => $event, 'data' => $data]
+        );
+        return (string)($response['event_id'] ?? '');
     }
 }

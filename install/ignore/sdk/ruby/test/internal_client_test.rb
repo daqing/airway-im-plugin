@@ -56,5 +56,35 @@ module AirwayIM
         @server.stop
       end
     end
+
+    def test_notify_users_sends_internal_secret_and_returns_event_id
+      client = with_server do |req|
+        assert_equal "POST", req.method
+        assert_equal "/internal/v1/notify", req.path
+        assert_equal SECRET, req.headers["x-im-internal-secret"]
+        assert_equal({ "user_uuids" => ["user-1", "user-2"], "event" => "host.friend_request",
+                       "data" => { "from" => "user-9" } }, JSON.parse(req.body))
+        [200, envelope({ event_id: "01J6Z0A1B2C3D4E5F6G7H8J9K0" })]
+      end
+
+      event_id = client.notify_users(user_uuids: ["user-1", "user-2"],
+                                     event: "host.friend_request",
+                                     data: { from: "user-9" })
+      assert_equal "01J6Z0A1B2C3D4E5F6G7H8J9K0", event_id
+    end
+
+    def test_notify_errors_map_envelope_codes
+      { [400, 10_003] => "notify: at most 100 recipients per event",
+        [401, 10_005] => "Internal authentication required" }.each do |(status, code), message|
+        client = with_server do |_req|
+          [status, envelope(nil, code: code, message: message)]
+        end
+        error = assert_raises(Error) { client.notify_users(user_uuids: ["u"], event: "host.x") }
+        assert_equal code, error.code
+        assert_equal status, error.status
+        assert_equal message, error.message
+        @server.stop
+      end
+    end
   end
 end

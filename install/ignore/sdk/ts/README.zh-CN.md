@@ -25,6 +25,9 @@
   `getCredential` 换新凭证并恢复，业务代码无感。
 - **服务端凭证签发** — Node 后端通过 SDK 的 `InternalClient` 获取凭证
   （服务端对服务端、仅限内网；绝不要打包进客户端代码），无需手写 HTTP 调用。
+- **宿主通知** — 后端可经 `InternalClient.notify` 把自己的领域事件
+  （好友请求、邮件提醒等）通过同一条已认证网关推送给指定用户，
+  客户端通过 `host.notification` 事件接收。
 - **小程序友好** — 内置的 `wechatAdapter` 基于 `wx.request` / `wx.connectSocket` /
   `wx.uploadFile` / `wx.*StorageSync`，并自动在 `wx.onAppShow` 时恢复连接
   （小程序切后台会杀掉 socket）。
@@ -237,6 +240,7 @@ await group.send("hello");
 | `message.updated` | `(msg)` | 消息被审核屏蔽，content 已是 `***`，用替换渲染 |
 | `members.added` | `{conversationId, addedUserUuids, event}` | 群成员加入（含被拉人自己） |
 | `members.removed` | `{conversationId, removedUserUuid, event}` | 群成员被移出（含被踢者本人收到通知） |
+| `host.notification` | `{event, data?}` | 后端经 `InternalClient.notify` 推送的宿主领域通知；四个 IM 领域事件不会出现在这里 |
 | `status` | `ConnectionStatus` | `connecting / authenticating / online / reconnecting / offline / closed` |
 | `error` | `Error` | 网关认证失败、凭证续期失败等 |
 | `event` | 原始 `GatewayEvent` | 所有网关帧；未 `history()` 过的会话消息也在这里 |
@@ -304,6 +308,36 @@ TS/Node 后端请使用 SDK 的 `InternalClient`（见快速开始第 1 步）�
 `10005` 在这里表示 `X-IM-Internal-Secret` 缺失或不匹配（不是公开 API 的
 无权限）；`10006` Airway 部署未配置 `IM_AUTH_SECRET`、无法签发；
 `10000` 内部错误。
+
+### 宿主通知
+
+宿主平台可以把自己的领域事件——好友请求、邮件提醒、任意事件——通过聊天
+所用的同一条已认证 WebSocket 网关推送给指定用户，无需另行搭建推送通道。
+后端调用内部监听地址上的 `POST /internal/v1/notify`（与凭证签发一样受
+`X-IM-Internal-Secret` 保护）；用 SDK 只需一次调用，返回生成的事件 id：
+
+```ts
+const eventId = await internal.notify({
+  userUuids: [user.uuid],                       // 每个事件 1–100 个接收者
+  event: "host.friend_request",                 // 自由命名，1–64 字符
+  data: { from_uuid: sender.uuid },             // 任意 JSON，编码后 ≤ 4 KiB
+});
+```
+
+在线接收者会收到标准网关帧，SDK 将其连同载荷一起交给
+`host.notification` 事件；四个 IM 领域事件各有专属 handler，不会出现在
+这里：
+
+```ts
+im.on("host.notification", ({ event, data }) => {
+  if (event === "host.friend_request") renderFriendRequest(data);
+});
+```
+
+投递是告知性的：在线接收者实时收到，离线接收者不做补投——每个通知都应
+搭配一个客户端可按需拉取的拉取接口。其他语言的后端直接 POST 同一端点：
+`{"user_uuids":[...],"event":"host.x","data":{...}}` →
+`{"code":0,"data":{"event_id":"01J…"},"message":null}`。
 
 ## 消息可靠性模型
 
@@ -379,9 +413,10 @@ IM_INTERNAL_URL=http://127.0.0.1:1906 pnpm verify
 ```
 
 脚本覆盖：凭证铸造与注册、单聊/群聊收发、实时 fan-out 与顺序、幂等重放与 11002、
-成员增删与事件、被踢成员权限、断线重连补同步、审核掩码 `message.updated`、
-文件上传；随后以 `browserAdapter` 重跑核心链路（含 File/Blob 上传与 localStorage
-持久化）。`IM_INTERNAL_URL`/`IM_INTERNAL_SECRET` 等可用环境变量覆盖。
+成员增删与事件、被踢成员权限、经 `InternalClient.notify` 的宿主通知、
+断线重连补同步、审核掩码 `message.updated`、文件上传；随后以 `browserAdapter`
+重跑核心链路（含 File/Blob 上传与 localStorage 持久化）。
+`IM_INTERNAL_URL`/`IM_INTERNAL_SECRET` 等可用环境变量覆盖。
 
 ## 协议参考
 

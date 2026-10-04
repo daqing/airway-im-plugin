@@ -32,10 +32,38 @@ export class InternalClient {
         if (options.ttlSeconds !== undefined)
             body.ttl_seconds = options.ttlSeconds;
         const data = await this.request("/internal/v1/credentials", body);
+        if (typeof data.credential !== "string") {
+            throw new IMError(-1, "unexpected response: missing credential", 0);
+        }
         return {
             credential: data.credential,
             expiresAt: typeof data.expires_at === "string" ? data.expires_at : null,
         };
+    }
+    /**
+     * Push a host-domain notification to specific users over the IM WebSocket
+     * gateway (server-to-server variant of the in-process NotifyUsers): any
+     * event name the host platform defines, with a free-form JSON payload.
+     * Recipients see it as the client's "host.notification" event; the four IM
+     * domain events are never routed there. Limits enforced server-side: at
+     * most 100 recipients per event, event names 1–64 characters, data at most
+     * 4 KiB encoded. Delivery is advisory — online recipients receive it in
+     * real time, offline recipients are not replayed, so pair every
+     * notification with a pull endpoint clients load on demand. Resolves with
+     * the generated event id.
+     */
+    async notify(options) {
+        const body = {
+            user_uuids: options.userUuids,
+            event: options.event,
+        };
+        if (options.data !== undefined)
+            body.data = options.data;
+        const data = await this.request("/internal/v1/notify", body);
+        if (typeof data.event_id !== "string") {
+            throw new IMError(-1, "unexpected response: missing event_id", 0);
+        }
+        return data.event_id;
     }
     async request(path, body) {
         const fetchImpl = globalThis.fetch;
@@ -76,7 +104,7 @@ export class InternalClient {
         }
         if (res.status >= 200 && res.status < 300 &&
             envelope && envelope.code === 0 &&
-            envelope.data && typeof envelope.data.credential === "string") {
+            envelope.data && typeof envelope.data === "object") {
             return envelope.data;
         }
         if (envelope && typeof envelope.code === "number") {

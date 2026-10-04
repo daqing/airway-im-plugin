@@ -34,6 +34,49 @@ final class InternalClientTest extends TestCase
         );
     }
 
+    public function testNotifyUsersSendsInternalSecretAndReturnsEventId(): void
+    {
+        $this->startServer([['status' => 200, 'body' => envelope(['event_id' => '01JFR8ZK6V'])]]);
+
+        $eventId = (new InternalClient(
+            internalUrl: $this->server->url(),
+            internalSecret: self::SECRET
+        ))->notifyUsers(['user-1', 'user-2'], 'host.friend_request', ['from_uuid' => 'user-1']);
+
+        assertSame('01JFR8ZK6V', $eventId);
+
+        $request = $this->server->requests()[0];
+        assertSame('POST', $request['method']);
+        assertSame('/internal/v1/notify', $request['path']);
+        assertSame(self::SECRET, $request['headers']['x-im-internal-secret']);
+        assertEquals(
+            ['user_uuids' => ['user-1', 'user-2'], 'event' => 'host.friend_request', 'data' => ['from_uuid' => 'user-1']],
+            json_decode($request['body'], true)
+        );
+    }
+
+    public function testNotifyErrorsMapEnvelopeCodes(): void
+    {
+        foreach ([
+            [400, 10003, 'notify: at most 100 recipients per event'],
+            [401, 10005, 'Internal authentication required'],
+        ] as [$status, $code, $message]) {
+            $this->startServer([['status' => $status, 'body' => envelope(null, $code, $message)]]);
+
+            $error = assertThrows(
+                fn () => (new InternalClient(internalUrl: $this->server->url(), internalSecret: self::SECRET))
+                    ->notifyUsers(['user-1'], 'host.friend_request', ['from_uuid' => 'user-2']),
+                Error::class
+            );
+            assertSame($code, $error->getCode());
+            assertSame($status, $error->status);
+            assertSame($message, $error->getMessage());
+
+            $this->server->stop();
+            $this->server = null;
+        }
+    }
+
     public function testMintCredentialOmitsNullFields(): void
     {
         $this->startServer([['status' => 200, 'body' => envelope(['credential' => 'im1.x.y', 'expires_at' => null])]]);

@@ -206,11 +206,19 @@ $im->storageUrl('avatars/202609/xxx.png');                // 下载 URL
 | `verifySignature(credential, secret)` | 常数时间校验,非法输入返回 `false` |
 | `expired(credential 或 claims, now: null)` | `exp` 是否已过;没有 `exp` 的凭据永不过期 |
 
-### `AirwayIM\InternalClient`(内部铸造端点,默认 `127.0.0.1:1906`)
+### `AirwayIM\InternalClient`(内部端点,默认 `127.0.0.1:1906`)
 
 | 方法 | 说明 |
 | --- | --- |
 | `mintCredential(uuid, name, nickname: null, avatarUrl: null, ttlSeconds: null)` | 服务端到服务端铸造凭据;`ttlSeconds` 默认 86400,上限 2592000,`0` 表示不过期;返回 `MintedCredential`(`credential()`、`expiresAt()`) |
+| `notifyUsers(userUuids, event, data)` | 通过 IM WebSocket 网关向指定用户推送宿主域事件(如 `host.friend_request`);返回事件 id |
+
+宿主通知让你的后端可以把任意领域事件推给指定用户,复用聊天同一条经过
+认证的 WebSocket 网关,而不用另建一条推送通道。服务端强制限制:单个事件
+最多 100 个接收者,事件名 1–64 字符,编码后的 `data` ≤ 4 KiB。投递是
+advisory(尽力而为)—— 在线接收者实时收到帧,离线接收者不会补投,因此
+每条通知都应搭配一个拉取端点。实时客户端 SDK(如 Swift SDK 的
+`onHostNotification`)会把所有非 IM 域的事件作为宿主通知呈现。
 
 ### `AirwayIM\AdminClient`(管理台,`/admin/api`)
 

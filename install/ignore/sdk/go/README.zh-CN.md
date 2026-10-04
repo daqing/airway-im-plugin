@@ -192,6 +192,11 @@ _, err = group.AddMembers(ctx, []string{anotherUserUUID})
 | `OnStatus` | `ConnectionStatus` | `connecting / authenticating / online / reconnecting / offline / closed` |
 | `OnError` | `*IMError` | 网关认证失败、凭据续期失败等 |
 | `OnEvent` | 原始 `GatewayEvent` | 每一帧网关事件；尚未跟踪的会话的消息也只在这里出现 |
+| `OnHostNotification` | `HostNotification` | 你的后端通过 `InternalClient.Notify` 推送的宿主域通知；四个 IM 域事件不会出现在这里 |
+
+`HostNotification` 携带自由形式的 `Event` 事件名与 `Data` 载荷（一个
+`JSONValue`）。投递是尽力而为的：在线接收者实时收到事件帧，离线接收者
+不会被补投——请为每类事件搭配一个客户端按需拉取的接口。
 
 连接控制：`im.Connect()`（幂等）/ `im.Disconnect()` / `im.IsOnline()` /
 `im.ConnectionStatus()` / `im.SetCredential(_)` /
@@ -225,6 +230,13 @@ _, err = group.AddMembers(ctx, []string{anotherUserUUID})
 | 方法 | 说明 |
 | --- | --- |
 | `MintCredential(ctx, MintOptions)` | 服务对服务凭据铸造；`TTLSeconds` 为 nil 时用后端默认值（86400，上限 2592000），`0` 表示不带过期；返回 `MintedCredential`（`Credential`、`ExpiresAt`） |
+| `Notify(ctx, userUUIDs, event, data)` | 通过 WebSocket 网关向指定用户推送宿主域通知（如 `host.friend_request`）；返回生成的事件 id |
+
+`Notify` 让你的后端把自己的域事件推送给用户，复用聊天所用的同一条
+认证网关，而不必另建推送通道；客户端通过 `OnHostNotification` 接收。
+服务端强制的限制：每个事件最多 100 个接收者，事件名 1–64 个字符，
+`data` 编码后不超过 4 KiB。投递是尽力而为的（仅在线接收者），因此
+请为每类事件搭配一个拉取接口。
 
 此类型仅供你的后端使用——客户端应用绝不能调用：能铸造凭据者可以冒充
 任何用户。这里的错误码 `10005` 表示 `X-IM-Internal-Secret` 请求头缺失
@@ -301,7 +313,7 @@ if errors.As(err, &imError) {
 
 ```bash
 go test -race ./...
-# 58 个测试：签名向量（与 Node 参考实现逐字节一致）、信封解析、幂等
+# 61 个测试：签名向量（与 Node 参考实现逐字节一致）、信封解析、幂等
 # 重试、凭据续期、同步引擎、网关重连/认证流程，以及一个手写 RFC 6455
 # 服务端——仅标准库，不依赖外部服务。
 ```

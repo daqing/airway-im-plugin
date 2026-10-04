@@ -111,3 +111,49 @@ func (c *InternalClient) MintCredential(ctx context.Context, opts MintOptions) (
 	}
 	return minted, nil
 }
+
+// Notify pushes a host-domain notification to the given users over the
+// WebSocket gateway chat uses, instead of the host building its own push
+// channel. event is a free-form name (conventionally prefixed "host.",
+// e.g. "host.friend_request"), data any JSON value. Limits enforced
+// server-side: at most 100 recipients, event names 1–64 characters, data
+// at most 4 KiB encoded. Delivery is advisory: online recipients receive
+// the frame in real time, offline recipients are not replayed — pair each
+// event with a pull endpoint clients load on demand. Returns the
+// generated event id.
+func (c *InternalClient) Notify(ctx context.Context, userUUIDs []string, event string, data any) (string, error) {
+	body := struct {
+		UserUUIDs []string `json:"user_uuids"`
+		Event     string   `json:"event"`
+		Data      any      `json:"data"`
+	}{
+		UserUUIDs: userUUIDs,
+		Event:     event,
+		Data:      data,
+	}
+	payload, err := marshalBody(body)
+	if err != nil {
+		return "", imErr(err)
+	}
+	response, err := c.transport.Send(ctx, &HTTPRequest{
+		URL:    joinURL(c.baseURL, "/internal/v1/notify"),
+		Method: "POST",
+		Headers: map[string]string{
+			"Content-Type":         "application/json",
+			"X-IM-Internal-Secret": c.internalSecret,
+		},
+		Body: payload,
+	})
+	if err != nil {
+		// Transport failure (including timeout): no HTTP status, the
+		// caller may retry.
+		return "", imErr(err)
+	}
+	var result struct {
+		EventID string `json:"event_id"`
+	}
+	if err := unwrapEnvelope(response, &result); err != nil {
+		return "", err
+	}
+	return result.EventID, nil
+}

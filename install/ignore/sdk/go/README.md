@@ -214,6 +214,12 @@ global stream, handy for unread badges or a unified inbox:
 | `OnStatus` | `ConnectionStatus` | `connecting / authenticating / online / reconnecting / offline / closed` |
 | `OnError` | `*IMError` | Gateway auth failure, credential renewal failure, etc. |
 | `OnEvent` | Raw `GatewayEvent` | Every gateway frame; messages of conversations not yet tracked also arrive here |
+| `OnHostNotification` | `HostNotification` | Host-domain notifications pushed by your backend via `InternalClient.Notify`; the four IM domain events never appear here |
+
+`HostNotification` carries the free-form `Event` name and the `Data`
+payload (a `JSONValue`). Delivery is advisory: online recipients receive
+the frame in real time, offline recipients are not replayed — pair each
+event with a pull endpoint clients load on demand.
 
 Connection control: `im.Connect()` (idempotent) / `im.Disconnect()` /
 `im.IsOnline()` / `im.ConnectionStatus()` / `im.SetCredential(_)` /
@@ -248,6 +254,14 @@ the SDK already deduplicates and gap-fills realtime events for you.
 | Method | Description |
 | --- | --- |
 | `MintCredential(ctx, MintOptions)` | Server-to-server credential minting; `TTLSeconds` nil applies the backend default (86400, capped at 2592000), `0` omits expiry; returns `MintedCredential` (`Credential`, `ExpiresAt`) |
+| `Notify(ctx, userUUIDs, event, data)` | Push a host-domain notification (e.g. `host.friend_request`) to specific users over the WebSocket gateway; returns the generated event id |
+
+`Notify` lets your backend push its own domain events to users over the
+same authenticated gateway chat uses, instead of building a separate push
+channel; clients receive them via `OnHostNotification`. Limits enforced
+server-side: at most 100 recipients per event, event names 1–64
+characters, `data` at most 4 KiB encoded. Delivery is advisory (online
+recipients only), so pair each event with a pull endpoint.
 
 This type is for your backend only — a client app must never call it:
 whoever can mint credentials can impersonate any user. Error code `10005`
@@ -336,7 +350,7 @@ keep the returned subscription for as long as the listener should fire.
 
 ```bash
 go test -race ./...
-# 58 tests: signing vectors (byte-for-byte against the Node reference),
+# 61 tests: signing vectors (byte-for-byte against the Node reference),
 # envelope parsing, idempotent retry, credential renewal, sync engine,
 # gateway reconnect/auth flows, and a hand-rolled RFC 6455 server —
 # standard library only, no external services.

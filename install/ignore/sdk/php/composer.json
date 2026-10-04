@@ -1,6 +1,6 @@
 {
     "name": "daqing/airway-im-sdk-php",
-    "description": "Server-side PHP SDK for the Airway IM plugin: credential minting, a REST client for conversations, messages and storage, and an admin API client. Zero dependencies (PHP standard library only).",
+    "description": "Server-side PHP SDK for the Airway IM plugin: credential minting, host notifications, a REST client for conversations, messages and storage, and an admin API client. Zero dependencies (PHP standard library only).",
     "type": "library",
     "license": "MIT",
     "version": "0.7.0",

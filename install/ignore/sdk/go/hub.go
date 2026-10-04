@@ -170,13 +170,14 @@ type eventHub struct {
 	statusMu  sync.RWMutex
 	status    ConnectionStatus
 
-	statusListeners         *listenerList[ConnectionStatus]
-	errorListeners          *listenerList[*IMError]
-	rawEventListeners       *listenerList[GatewayEvent]
-	messageListeners        *listenerList[ChatMessage]
-	messageUpdatedListeners *listenerList[ChatMessage]
-	membersAddedListeners   *listenerList[MembersAddedInfo]
-	membersRemovedListeners *listenerList[MembersRemovedInfo]
+	statusListeners           *listenerList[ConnectionStatus]
+	errorListeners            *listenerList[*IMError]
+	rawEventListeners         *listenerList[GatewayEvent]
+	messageListeners          *listenerList[ChatMessage]
+	messageUpdatedListeners   *listenerList[ChatMessage]
+	membersAddedListeners     *listenerList[MembersAddedInfo]
+	membersRemovedListeners   *listenerList[MembersRemovedInfo]
+	hostNotificationListeners *listenerList[HostNotification]
 }
 
 func newEventHub() *eventHub {
@@ -193,6 +194,7 @@ func newEventHub() *eventHub {
 	hub.messageUpdatedListeners = newListenerList[ChatMessage](hub.onPanic)
 	hub.membersAddedListeners = newListenerList[MembersAddedInfo](hub.onPanic)
 	hub.membersRemovedListeners = newListenerList[MembersRemovedInfo](hub.onPanic)
+	hub.hostNotificationListeners = newListenerList[HostNotification](hub.onPanic)
 	return hub
 }
 
@@ -260,4 +262,8 @@ func (h *eventHub) emitMembersRemoved(info MembersRemovedInfo) {
 	if conversation := h.registry.conversation(info.ConversationID); conversation != nil {
 		conversation.emitLocalMembersRemoved(info)
 	}
+}
+
+func (h *eventHub) emitHostNotification(notification HostNotification) {
+	h.hostNotificationListeners.emit(notification)
 }

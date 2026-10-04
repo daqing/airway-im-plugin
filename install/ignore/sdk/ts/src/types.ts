@@ -82,7 +82,18 @@ export interface GatewayEvent {
   sequence?: number;
   added_user_uuids?: string[];
   removed_user_uuid?: string;
+  /** Free-form JSON payload on host-domain notification frames. */
+  data?: unknown;
   targets?: { user_uuids: string[] };
+}
+
+/** A host-domain notification pushed through `POST /internal/v1/notify`:
+ * any event the host platform defines, with a free-form JSON payload.
+ * Advisory delivery — pair with a pull endpoint for anything offline users
+ * must not miss. */
+export interface HostNotification {
+  event: string;
+  data?: unknown;
 }
 
 export type ConnectionStatus =

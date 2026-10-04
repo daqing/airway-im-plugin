@@ -19,7 +19,7 @@ export type { ConversationEvents } from "./conversation.js";
 export { IMHttpClient } from "./http.js";
 export type { ListMessagesOptions, SendMessageOptions } from "./http.js";
 export { InternalClient } from "./internal.js";
-export type { InternalClientOptions, MintCredentialOptions, MintedCredential } from "./internal.js";
+export type { InternalClientOptions, MintCredentialOptions, MintedCredential, NotifyOptions } from "./internal.js";
 export { GatewaySocket } from "./gateway.js";
 export type { GatewayCallbacks } from "./gateway.js";
 export { SyncEngine } from "./sync.js";
@@ -51,6 +51,7 @@ export type {
   UploadResult,
   GatewayEvent,
   GatewayEventType,
+  HostNotification,
   ConnectionStatus,
 } from "./types.js";
 

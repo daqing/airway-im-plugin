@@ -220,6 +220,25 @@ secret and must use `InternalClient#mint_credential` instead.
 | Method | Description |
 | --- | --- |
 | `mint_credential(uuid:, name:, nickname: nil, avatar_url: nil, ttl_seconds: nil)` | Server-to-server credential minting; `ttl_seconds` defaults to 86400, capped at 2592000, `0` omits expiry; returns `MintedCredential(credential, expires_at)` |
+| `notify_users(user_uuids:, event:, data: nil)` | Push a host-domain event to specific users over the IM WebSocket gateway; returns the generated event id |
+
+### Host notifications
+
+`notify_users` pushes your own platform's domain events (friend requests,
+mail alerts, …) to specific users through the same WebSocket gateway chat
+uses — no separate push channel needed. The event name is free-form, 1–64
+characters (conventionally prefixed `host.`, e.g. `host.friend_request`);
+`data` is any JSON value up to 4 KiB encoded; each call takes at most 100
+recipients. Online recipients receive a gateway event frame in real time
+(client SDKs surface it via their host-notification listener); delivery is
+advisory — offline recipients are not replayed, so pair notifications with
+a pull endpoint for anything users must not miss.
+
+```ruby
+event_id = internal.notify_users(user_uuids: ["user-1", "user-2"],
+                                 event: "host.friend_request",
+                                 data: { from: "user-9" })
+```
 
 ### `AirwayIM::AdminClient` (admin console, `/admin/api`)
 

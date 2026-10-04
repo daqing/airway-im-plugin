@@ -33,6 +33,16 @@ export interface MintedCredential {
   expiresAt: string | null;
 }
 
+/** Options for pushing one host-domain notification. */
+export interface NotifyOptions {
+  /** Recipient user uuids (1–100 per event; duplicates and blanks are dropped server-side). */
+  userUuids: string[];
+  /** Free-form event name, 1–64 characters (conventionally prefixed "host."). */
+  event: string;
+  /** Any JSON value, at most 4 KiB encoded; omitted becomes {}. */
+  data?: unknown;
+}
+
 export interface InternalClientOptions {
   /** Internal listener URL, e.g. http://127.0.0.1:1906 — private network only. */
   internalUrl: string;
@@ -57,7 +67,7 @@ interface AbortControllerLike {
 
 interface Envelope {
   code?: number;
-  data?: { credential?: string; expires_at?: string } | null;
+  data?: { credential?: string; expires_at?: string; event_id?: string } | null;
   message?: string | null;
 }
 
@@ -90,10 +100,39 @@ export class InternalClient {
     if (options.ttlSeconds !== undefined) body.ttl_seconds = options.ttlSeconds;
 
     const data = await this.request("/internal/v1/credentials", body);
+    if (typeof data.credential !== "string") {
+      throw new IMError(-1, "unexpected response: missing credential", 0);
+    }
     return {
-      credential: data.credential as string,
+      credential: data.credential,
       expiresAt: typeof data.expires_at === "string" ? data.expires_at : null,
     };
+  }
+
+  /**
+   * Push a host-domain notification to specific users over the IM WebSocket
+   * gateway (server-to-server variant of the in-process NotifyUsers): any
+   * event name the host platform defines, with a free-form JSON payload.
+   * Recipients see it as the client's "host.notification" event; the four IM
+   * domain events are never routed there. Limits enforced server-side: at
+   * most 100 recipients per event, event names 1–64 characters, data at most
+   * 4 KiB encoded. Delivery is advisory — online recipients receive it in
+   * real time, offline recipients are not replayed, so pair every
+   * notification with a pull endpoint clients load on demand. Resolves with
+   * the generated event id.
+   */
+  async notify(options: NotifyOptions): Promise<string> {
+    const body: Record<string, unknown> = {
+      user_uuids: options.userUuids,
+      event: options.event,
+    };
+    if (options.data !== undefined) body.data = options.data;
+
+    const data = await this.request("/internal/v1/notify", body);
+    if (typeof data.event_id !== "string") {
+      throw new IMError(-1, "unexpected response: missing event_id", 0);
+    }
+    return data.event_id;
   }
 
   private async request(path: string, body: Record<string, unknown>): Promise<NonNullable<Envelope["data"]>> {
@@ -133,7 +172,7 @@ export class InternalClient {
     if (
       res.status >= 200 && res.status < 300 &&
       envelope && envelope.code === 0 &&
-      envelope.data && typeof envelope.data.credential === "string"
+      envelope.data && typeof envelope.data === "object"
     ) {
       return envelope.data;
     }

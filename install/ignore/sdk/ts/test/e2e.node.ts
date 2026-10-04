@@ -7,7 +7,7 @@
 
 import { createClient, IMError, browserAdapter, InternalClient } from "../dist/esm/index.js";
 import type { AirwayIM } from "../dist/esm/index.js";
-import type { ChatMessage } from "../dist/esm/index.js";
+import type { ChatMessage, HostNotification } from "../dist/esm/index.js";
 import { nodeAdapter } from "./node-adapter.ts";
 
 // Node lacks localStorage (the browser adapter reads it lazily); shim it so
@@ -153,6 +153,10 @@ async function main(): Promise<void> {
   // ---- Realtime connect (auth first frame) ----
   const aliceEvents = collect(alice);
   const bobEvents = collect(bob);
+  // Registered before connecting so every IM domain event below also passes
+  // this listener: none of them may surface as a host notification.
+  const hostNotifications: HostNotification[] = [];
+  alice.on("host.notification", (n) => hostNotifications.push(n));
   alice.connect();
   bob.connect();
   await waitOnline(alice);
@@ -274,6 +278,27 @@ async function main(): Promise<void> {
   const daveGroup = await dave.openConversation(group.id);
   ok("openConversation learns kind from gateway events", daveGroup.kind === "group");
   dave.disconnect();
+
+  // ---- Host notifications (POST /internal/v1/notify → "host.notification") ----
+  const eventId = await internal.notify({
+    userUuids: [aliceMe.uuid],
+    event: "host.friend_request",
+    data: { from_uuid: bobMe.uuid },
+  });
+  ok("internal notify returns the event id", typeof eventId === "string" && eventId.length === 26);
+  const notification = await waitFor("alice receives the host notification", () =>
+    hostNotifications.find((n) => n.event === "host.friend_request"),
+  );
+  ok(
+    "host notification arrives with its payload",
+    (notification.data as { from_uuid?: string } | undefined)?.from_uuid === bobMe.uuid,
+  );
+  await sleep(300);
+  ok(
+    "IM domain events never surface as host notifications",
+    hostNotifications.length === 1,
+    `count=${hostNotifications.length}`,
+  );
 
   // ---- Offline recovery: disconnect, send, reconnect, resync ----
   bob.disconnect();

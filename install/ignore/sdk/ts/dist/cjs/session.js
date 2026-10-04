@@ -172,6 +172,7 @@ class AirwayIM {
                 }
                 break;
             default:
+                this.emit("host.notification", { event: event.event, data: event.data });
                 break;
         }
     }

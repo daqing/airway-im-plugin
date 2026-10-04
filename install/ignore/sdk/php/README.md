@@ -221,11 +221,21 @@ secret and must use `InternalClient::mintCredential` instead.
 | `verifySignature(credential, secret)` | Constant-time verification, returns `false` on malformed input |
 | `expired(credential or claims, now: null)` | Whether `exp` has passed; credentials without `exp` never expire |
 
-### `AirwayIM\InternalClient` (internal minting endpoint, default `127.0.0.1:1906`)
+### `AirwayIM\InternalClient` (internal endpoints, default `127.0.0.1:1906`)
 
 | Method | Description |
 | --- | --- |
 | `mintCredential(uuid, name, nickname: null, avatarUrl: null, ttlSeconds: null)` | Server-to-server credential minting; `ttlSeconds` defaults to 86400, capped at 2592000, `0` omits expiry; returns a `MintedCredential` (`credential()`, `expiresAt()`) |
+| `notifyUsers(userUuids, event, data)` | Push a host-domain event (e.g. `host.friend_request`) to the given users over the IM WebSocket gateway; returns the event id |
+
+Host notifications let your backend push arbitrary domain events to specific
+users over the same authenticated WebSocket gateway chat uses, instead of
+building a separate push channel. Limits (enforced server-side): at most 100
+recipients per event, event names 1–64 chars, encoded `data` ≤ 4 KiB.
+Delivery is advisory — online recipients receive the frame in real time,
+offline recipients are not replayed, so pair every notification with a pull
+endpoint. Realtime client SDKs (e.g. the Swift SDK's `onHostNotification`)
+surface any non-IM-domain event as a host notification.
 
 ### `AirwayIM\AdminClient` (admin console, `/admin/api`)
 

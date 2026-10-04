@@ -259,6 +259,56 @@ func TestSessionGatewayEndToEndWithFakeSocket(t *testing.T) {
 	})
 }
 
+func TestSessionHostNotifications(t *testing.T) {
+	server := newStubServer(t, func(req capturedRequest) (int, any) {
+		t.Errorf("unexpected path %q", req.Path)
+		return 500, nil
+	})
+	factory := &fakeSocketFactory{}
+	factory.setOnSend(func(fake *fakeSocket, text string) {
+		if strings.Contains(text, `"auth"`) {
+			go fake.serverEnqueue(`{"code":0,"data":"OK"}`)
+		}
+	})
+	session := New(server.URL, "ws://stub", "test-credential",
+		WithHTTPTransport(NewHTTPTransport(2*time.Second)),
+		WithSocketFactory(factory.make),
+		WithPersistSequences(false),
+	)
+	t.Cleanup(session.Close)
+
+	var notifications capture[HostNotification]
+	session.OnHostNotification(func(notification HostNotification) { notifications.append(notification) })
+
+	session.Connect()
+	waitFor(t, "online", 2*time.Second, func() bool { return session.IsOnline() })
+
+	// A host-domain frame arrives at the listener with its payload.
+	factory.last().serverEnqueue(`{"event_id":"01HOST1","event":"host.friend_request","conversation_id":"","data":{"from_uuid":"u-a"},"targets":{"user_uuids":["u-me"]}}`)
+	waitFor(t, "host notification", 2*time.Second, func() bool {
+		return notifications.count() > 0
+	})
+	notification, _ := notifications.last()
+	if notification.Event != "host.friend_request" {
+		t.Fatalf("event = %q", notification.Event)
+	}
+	if from, ok := notification.Data.Get("from_uuid").AsString(); !ok || from != "u-a" {
+		t.Fatalf("data.from_uuid = %v", notification.Data.Get("from_uuid"))
+	}
+
+	// IM domain events must not surface as host notifications.
+	factory.last().serverEnqueue(eventFrame("evt-im", EventMessageCreated, "conv-group", 1, "m1"))
+	time.Sleep(150 * time.Millisecond)
+	if notifications.count() != 1 {
+		t.Fatalf("host notifications = %d, want 1 (IM events excluded)", notifications.count())
+	}
+
+	session.Disconnect()
+	waitFor(t, "closed", 2*time.Second, func() bool {
+		return session.ConnectionStatus() == StatusClosed
+	})
+}
+
 func TestSessionCloseStopsEverything(t *testing.T) {
 	session, _ := newTestSession(t, func(req capturedRequest) (int, any) {
 		return 200, respond(nil)

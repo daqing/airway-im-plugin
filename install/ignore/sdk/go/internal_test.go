@@ -99,4 +99,63 @@ func TestInternalClientCustomTimeout(t *testing.T) {
 	}
 }
 
+func TestNotifySendsInternalSecretAndBody(t *testing.T) {
+	var (
+		secret  string
+		body    map[string]any
+		authSet bool
+	)
+	server := newStubServer(t, func(req capturedRequest) (int, any) {
+		if req.Path != "/internal/v1/notify" {
+			t.Errorf("path = %q", req.Path)
+		}
+		secret = req.Header.Get("X-IM-Internal-Secret")
+		authSet = req.Header.Get("Authorization") != ""
+		body = req.JSONBody()
+		return 200, respond(map[string]any{"event_id": "01HOSTEVENTID000000000000"})
+	})
+	client := NewInternalClient(server.URL, "internal-secret")
+	eventID, err := client.Notify(context.Background(),
+		[]string{"user-2"}, "host.friend_request",
+		map[string]any{"from_uuid": "user-1"})
+	if err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	if secret != "internal-secret" {
+		t.Fatalf("internal secret header = %q", secret)
+	}
+	if authSet {
+		t.Error("internal requests must not carry Authorization")
+	}
+	if body["event"] != "host.friend_request" {
+		t.Errorf("event = %v", body["event"])
+	}
+	uuids, ok := body["user_uuids"].([]any)
+	if !ok || len(uuids) != 1 || uuids[0] != "user-2" {
+		t.Errorf("user_uuids = %v", body["user_uuids"])
+	}
+	data, ok := body["data"].(map[string]any)
+	if !ok || data["from_uuid"] != "user-1" {
+		t.Errorf("data = %v", body["data"])
+	}
+	if eventID != "01HOSTEVENTID000000000000" {
+		t.Fatalf("eventID = %q", eventID)
+	}
+}
+
+func TestNotifySurfacesValidationErrors(t *testing.T) {
+	server := newStubServer(t, func(req capturedRequest) (int, any) {
+		return 400, respondError(10003, "notify: at most 100 recipients per event")
+	})
+	client := NewInternalClient(server.URL, "s")
+	_, err := client.Notify(context.Background(), []string{"u"}, "host.x", nil)
+	imError, ok := err.(*IMError)
+	if !ok {
+		t.Fatalf("expected *IMError, got %T: %v", err, err)
+	}
+	if imError.Code != 10003 || imError.Status != 400 {
+		t.Fatalf("unexpected error: %+v", imError)
+	}
+}
+
 func intPtr(v int) *int { return &v }

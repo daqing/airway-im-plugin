@@ -199,6 +199,22 @@ callback，收到 `10001`/401 时自动换新凭证并重试一次；`credential
 | 方法 | 说明 |
 | --- | --- |
 | `mint_credential(uuid:, name:, nickname: nil, avatar_url: nil, ttl_seconds: nil)` | 服务端对服务端铸造凭证；`ttl_seconds` 默认 86400、上限 2592000，`0` 表示无过期；返回 `MintedCredential(credential, expires_at)` |
+| `notify_users(user_uuids:, event:, data: nil)` | 通过 IM WebSocket 网关向指定用户推送宿主域事件；返回生成的事件 id |
+
+### 宿主通知
+
+`notify_users` 把你平台自己的领域事件（好友请求、邮件提醒等）通过与聊天
+共用的 WebSocket 网关推送给指定用户，无需另建推送通道。事件名自由定义，
+1–64 个字符（约定加 `host.` 前缀，如 `host.friend_request`）；`data` 为任意
+JSON 值，编码后不超过 4 KiB；单次最多 100 个接收人。在线接收人实时收到网关
+事件帧（客户端 SDK 通过宿主通知监听器暴露）；投递是尽力而为的——离线接收人
+不会补发，因此凡是用户不可错过的通知都要配套一个拉取接口。
+
+```ruby
+event_id = internal.notify_users(user_uuids: ["user-1", "user-2"],
+                                 event: "host.friend_request",
+                                 data: { from: "user-9" })
+```
 
 ### `AirwayIM::AdminClient`（管理后台，`/admin/api`）
 

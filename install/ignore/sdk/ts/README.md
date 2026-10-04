@@ -37,6 +37,10 @@ uni-app, and browser frameworks such as Vue and React.
 - **Server-side credential minting** — a Node backend obtains credentials
   through the SDK's `InternalClient` (server-to-server, private network;
   never bundle it into client code) instead of raw HTTP calls.
+- **Host notifications** — your backend can push its own domain events
+  (friend requests, mail alerts, …) to specific users over the same
+  authenticated gateway via `InternalClient.notify`; clients receive them
+  through the `host.notification` event.
 - **Mini Program friendly** — the built-in `wechatAdapter` is built on
   `wx.request` / `wx.connectSocket` / `wx.uploadFile` / `wx.*StorageSync`, and
   automatically restores the connection on `wx.onAppShow` (Mini Programs kill
@@ -268,6 +272,7 @@ stream, handy for unread badges or a unified inbox:
 | `message.updated` | `(msg)` | Message masked by moderation; content is already `***`; re-render by replacing |
 | `members.added` | `{conversationId, addedUserUuids, event}` | Group members added (including the added users themselves) |
 | `members.removed` | `{conversationId, removedUserUuid, event}` | Group member removed (a kicked user is notified too) |
+| `host.notification` | `{event, data?}` | Host-domain notification pushed by your backend via `InternalClient.notify`; the four IM domain events never appear here |
 | `status` | `ConnectionStatus` | `connecting / authenticating / online / reconnecting / offline / closed` |
 | `error` | `Error` | Gateway auth failure, credential renewal failure, etc. |
 | `event` | Raw `GatewayEvent` | Every gateway frame; messages of conversations not yet `history()`-tracked also arrive here |
@@ -343,6 +348,39 @@ Error codes: `10003` invalid JSON, missing/oversized `uuid`/`name`, or
 header is missing or wrong (not the public API's permission denied);
 `10006` the Airway deployment has no `IM_AUTH_SECRET` configured and cannot
 sign; `10000` internal error.
+
+### Host notifications
+
+Host platforms can push their own domain events — friend requests, mail
+alerts, anything — to specific users over the same authenticated WebSocket
+gateway chat uses, instead of building a separate push channel. The backend
+calls `POST /internal/v1/notify` on the internal listener (same
+`X-IM-Internal-Secret` protection as credential minting); with the SDK that
+is one call, and it resolves with the generated event id:
+
+```ts
+const eventId = await internal.notify({
+  userUuids: [user.uuid],                       // 1–100 recipients per event
+  event: "host.friend_request",                 // free-form name, 1–64 chars
+  data: { from_uuid: sender.uuid },             // any JSON, ≤ 4 KiB encoded
+});
+```
+
+Online recipients receive a standard gateway frame and the SDK surfaces it
+through the `host.notification` event with the payload intact; the four IM
+domain events are routed to their own handlers and never appear here:
+
+```ts
+im.on("host.notification", ({ event, data }) => {
+  if (event === "host.friend_request") renderFriendRequest(data);
+});
+```
+
+Delivery is advisory: online recipients get the event in real time, offline
+recipients are not replayed — pair every notification with a pull endpoint
+clients load on demand. Backends in other languages POST the same endpoint
+directly: `{"user_uuids":[...],"event":"host.x","data":{...}}` →
+`{"code":0,"data":{"event_id":"01J…"},"message":null}`.
 
 ## Message reliability model
 
@@ -433,11 +471,12 @@ IM_INTERNAL_URL=http://127.0.0.1:1906 pnpm verify
 
 The script covers: credential minting and registration, direct/group
 send-receive, realtime fan-out and ordering, idempotent replay and 11002,
-member add/remove and events, kicked-member permissions, reconnect catch-up
-sync, moderation masking via `message.updated`, and file upload; then re-runs
-the core flows with `browserAdapter` (including File/Blob upload and
-localStorage persistence). `IM_INTERNAL_URL`/`IM_INTERNAL_SECRET` and other
-values can be overridden through environment variables.
+member add/remove and events, kicked-member permissions, host notifications
+via `InternalClient.notify`, reconnect catch-up sync, moderation masking via
+`message.updated`, and file upload; then re-runs the core flows with
+`browserAdapter` (including File/Blob upload and localStorage persistence).
+`IM_INTERNAL_URL`/`IM_INTERNAL_SECRET` and other values can be overridden
+through environment variables.
 
 ## Protocol reference
 
