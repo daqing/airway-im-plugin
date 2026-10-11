@@ -1334,15 +1334,14 @@ components:
           description: Optional group display title.
         member_uuids:
           type: array
-          minItems: 1
           items:
             type: string
             minLength: 1
             maxLength: 64
           description: >-
             Users to add as members, by their stable uuid. Duplicates, empty
-            values, and the authenticated user's own uuid are removed; at least
-            one other existing user must remain.
+            values, and the authenticated user's own uuid are removed; the
+            owner is always a member, so the list may be empty.
 
     CreateMessageRequest:
       type: object

@@ -162,6 +162,43 @@ func TestCreateGroup(t *testing.T) {
 	}
 }
 
+func TestCreateGroupWithOwnerOnly(t *testing.T) {
+	router := setupGroupTestRouter(t)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/group", strings.NewReader(
+		`{"title":"Solo Group","member_uuids":["uuid-owner",""]}`,
+	))
+	request.Header.Set("Authorization", "Bearer "+groupOwnerCredential(t))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Code int                  `json:"code"`
+		Data conversationResponse `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Code != 0 || body.Data.Kind != "group" || body.Data.CreatedBy != "uuid-owner" {
+		t.Fatalf("unexpected response: %#v", body)
+	}
+
+	var members []struct {
+		UserID int64  `db:"user_id"`
+		Role   string `db:"role"`
+	}
+	db := repo.CurrentDB()
+	if err := db.Select(&members, db.Rebind("SELECT user_id, role FROM conversation_members WHERE conversation_id = ?"), body.Data.ID); err != nil {
+		t.Fatalf("load members: %v", err)
+	}
+	if len(members) != 1 || members[0].UserID != 1 || members[0].Role != "owner" {
+		t.Fatalf("unexpected members: %#v", members)
+	}
+}
+
 func TestCreateGroupRejectsInvalidRequests(t *testing.T) {
 	tests := []struct {
 		name string
@@ -169,7 +206,6 @@ func TestCreateGroupRejectsInvalidRequests(t *testing.T) {
 	}{
 		{name: "invalid JSON", body: `{"member_uuids":`},
 		{name: "unknown field", body: `{"member_uuids":["uuid-bob"],"kind":"direct"}`},
-		{name: "no other members", body: `{"member_uuids":["uuid-owner",""]}`},
 		{name: "unknown member", body: `{"member_uuids":["uuid-nobody"]}`},
 	}
 

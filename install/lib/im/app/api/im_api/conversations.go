@@ -201,10 +201,6 @@ func createConversation(c *gin.Context, user *models.User, request createConvers
 		respondError(c, http.StatusBadRequest, 10003, "A direct conversation requires one other member")
 		return
 	}
-	if request.Kind == "group" && len(memberUUIDs) == 0 {
-		respondError(c, http.StatusBadRequest, 10003, "A group requires at least one other member")
-		return
-	}
 
 	db := repo.CurrentDB()
 	resolved, err := resolveUsers(db, memberUUIDs)
@@ -309,6 +305,9 @@ type resolvedUser struct {
 // resolveUsers maps member uuids to their users rows; callers compare the
 // result length to detect unknown uuids.
 func resolveUsers(db *sqlx.DB, uuids map[string]struct{}) ([]resolvedUser, error) {
+	if len(uuids) == 0 {
+		return nil, nil
+	}
 	list := make([]string, 0, len(uuids))
 	for uuid := range uuids {
 		list = append(list, uuid)
