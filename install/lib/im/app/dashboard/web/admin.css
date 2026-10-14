@@ -213,6 +213,8 @@ body {
   overflow-wrap: anywhere;
 }
 .admin-content-cell:hover { color: var(--aw-primary); }
+.admin-row-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.admin-label-chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .admin-message-content {
   margin: 0 0 14px;
   padding: 12px 14px;

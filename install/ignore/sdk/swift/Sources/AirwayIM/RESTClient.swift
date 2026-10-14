@@ -157,10 +157,13 @@ public actor RESTClient {
     /// generated per call and reused across network-failure retries, so
     /// retry storms can never duplicate a message; pass `idempotencyKey` to
     /// control it (1-128 chars, reuse only for the same logical request).
+    /// `labels` carries client-side screening results (currently only
+    /// `illegal`); a labeled message is held for review instead of delivered.
     public func sendMessage(
         _ conversationId: String,
         _ content: String,
         contentType: ContentType = .markdown,
+        labels: [String] = [],
         idempotencyKey: String? = nil,
         retries: Int = 1
     ) async throws -> ChatMessage {
@@ -168,9 +171,12 @@ public actor RESTClient {
             let conversationId: String
             let content: String
             let contentType: ContentType
+            let labels: [String]
         }
         let payload = try Util.encoder.encode(
-            Body(conversationId: conversationId, content: content, contentType: contentType))
+            Body(
+                conversationId: conversationId, content: content,
+                contentType: contentType, labels: labels))
         let key = idempotencyKey ?? UUID().uuidString
         var attempt = 0
         while true {
@@ -194,6 +200,7 @@ public actor RESTClient {
         _ otherUserUUID: String,
         _ content: String,
         contentType: ContentType = .markdown,
+        labels: [String] = [],
         idempotencyKey: String? = nil,
         retries: Int = 1
     ) async throws -> ChatMessage {
@@ -201,6 +208,7 @@ public actor RESTClient {
         return try await sendMessage(
             conversation.id, content,
             contentType: contentType,
+            labels: labels,
             idempotencyKey: idempotencyKey,
             retries: retries)
     }

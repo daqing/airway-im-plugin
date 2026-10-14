@@ -53,6 +53,13 @@ func Login(c *gin.Context) {
 	adminOK(c, gin.H{"token": token, "expires_at": expiresAt, "username": wantUsername})
 }
 
+// currentAdminUsername is the identity recorded on moderation decisions. The
+// console authenticates against a single env-configured account, so the
+// configured username is the operator behind every request.
+func currentAdminUsername() string {
+	return strings.TrimSpace(os.Getenv("IM_ADMIN_USERNAME"))
+}
+
 func Logout(c *gin.Context) {
 	token, _ := adminBearer(c.GetHeader("Authorization"))
 	adminSessions.Lock()

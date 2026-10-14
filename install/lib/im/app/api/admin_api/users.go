@@ -4,19 +4,21 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/moderation"
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/repo"
 	"github.com/gin-gonic/gin"
 )
 
 type adminUser struct {
-	UUID         string     `db:"uuid" json:"uuid"`
-	Username     string     `db:"username" json:"username"`
-	Nickname     *string    `db:"nickname" json:"nickname"`
-	AvatarURL    *string    `db:"avatar_url" json:"avatar_url"`
-	Email        *string    `db:"email" json:"email"`
-	LastSeenAt   *time.Time `db:"last_seen_at" json:"last_seen_at"`
-	TokenVersion int64      `db:"token_version" json:"token_version"`
-	CreatedAt    time.Time  `db:"created_at" json:"created_at"`
+	UUID         string            `db:"uuid" json:"uuid"`
+	Username     string            `db:"username" json:"username"`
+	Nickname     *string           `db:"nickname" json:"nickname"`
+	AvatarURL    *string           `db:"avatar_url" json:"avatar_url"`
+	Email        *string           `db:"email" json:"email"`
+	LastSeenAt   *time.Time        `db:"last_seen_at" json:"last_seen_at"`
+	TokenVersion int64             `db:"token_version" json:"token_version"`
+	Labels       moderation.Labels `db:"labels" json:"labels"`
+	CreatedAt    time.Time         `db:"created_at" json:"created_at"`
 }
 
 // ListUsers returns every identity registered with the IM service. Rows are
@@ -26,7 +28,7 @@ type adminUser struct {
 func ListUsers(c *gin.Context) {
 	db := repo.CurrentDB()
 	var users []adminUser
-	query := "SELECT uuid, username, nickname, avatar_url, email, last_seen_at, token_version, created_at FROM users ORDER BY created_at DESC"
+	query := "SELECT uuid, username, nickname, avatar_url, email, last_seen_at, token_version, labels, created_at FROM users ORDER BY created_at DESC"
 	if err := db.Select(&users, query); err != nil {
 		adminError(c, http.StatusInternalServerError, 20000, "Could not load users")
 		return

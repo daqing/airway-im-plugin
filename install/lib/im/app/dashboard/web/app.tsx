@@ -12,6 +12,7 @@ import { Overview } from "./pages/overview";
 import { Users } from "./pages/users";
 import { Conversations } from "./pages/conversations";
 import { ConversationMessages } from "./pages/messages";
+import { Reviews } from "./pages/reviews";
 import { ToastProvider } from "./ui/toast";
 import { cx } from "./ui/cx";
 
@@ -22,7 +23,8 @@ const queryClient = new QueryClient({
 });
 
 // Hash router: the console ships as one embedded bundle without a router
-// dependency; routes are #/overview, #/users, #/conversations, #/conversations/:id.
+// dependency; routes are #/overview, #/users, #/conversations,
+// #/conversations/:id, #/reviews.
 function useHashRoute(): string {
   const current = () => {
     const hash = window.location.hash;
@@ -48,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/overview", label: "Overview" },
   { path: "/users", label: "Users" },
   { path: "/conversations", label: "Conversations" },
+  { path: "/reviews", label: "Review queue" },
 ];
 
 function Shell(props: { route: string; session: AdminSession; onSignOut: () => void; children: ComponentChildren }) {
@@ -118,6 +121,8 @@ function Root() {
     page = <ConversationMessages conversationId={messagesMatch[1]!} />;
   } else if (route.startsWith("/conversations")) {
     page = <Conversations />;
+  } else if (route.startsWith("/reviews")) {
+    page = <Reviews />;
   } else {
     page = <Overview />;
   }

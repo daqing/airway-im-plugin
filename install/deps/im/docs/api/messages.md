@@ -66,6 +66,11 @@ error.
 | `conversation_id` | string | yes | Stable ID of the destination direct-message or group conversation. |
 | `content` | string | yes | UTF-8 message source. For Markdown, this is the original Markdown text, not rendered HTML. |
 | `content_type` | string | no | Content format. Defaults to `text/markdown`; version 1 accepts only `text/markdown` and `text/plain`. |
+| `labels` | array of strings | no | Screening verdicts the sending client attached to this content: at most 16 labels of 32 characters each. `["illegal"]` reports a client-side keyword hit for political, pornographic, or other illegal content, and the server then holds the message for operator review instead of delivering it. Omit the field, or send `[]`, for ordinary content. |
+
+`labels` is not a routing field: it cannot label another user or conversation,
+and the server screens `content` against the moderation service's word list no
+matter what the client reports.
 
 Unknown fields are rejected so that misspelled security- or routing-sensitive
 fields do not silently pass validation.
@@ -102,8 +107,16 @@ Before creating a message, the API must:
 5. reject content that is empty after trimming Unicode whitespace;
 6. enforce the configured UTF-8 byte and character limits;
 7. verify that the authenticated user is an active member of the conversation;
-8. apply per-user and per-conversation rate limits; and
-9. process the idempotency key, when supplied.
+8. apply per-user and per-conversation rate limits;
+9. process the idempotency key, when supplied; and
+10. screen the content and hold it for operator review when the client reported
+    `illegal`, the moderation service's word list matches, or the sender already
+    carries the `illegal` label.
+
+Screening is a call to the moderation service (`IM_MODERATION_URL`, see
+[`../../README.md`](../../README.md)). It is fail-closed: if the service cannot
+answer, the message is queued for review rather than delivered, and its
+`flag_matches` records `screening-unavailable`.
 
 The recommended initial content limit is 32 KiB after JSON decoding. The server
 must measure both bytes and characters explicitly; it must not truncate a
@@ -150,6 +163,36 @@ If the same idempotency key and equivalent body are submitted again, the server
 returns the original message without creating or publishing a duplicate. It may
 return HTTP `200 OK` for such a replay. Client logic must use `code` and the
 message ID rather than relying on `201` to distinguish the first response.
+
+### Held for review
+
+A message that screens as illegal is still created — under the ID the server
+returns — but it is not delivered:
+
+```json
+{
+  "code": 0,
+  "data": {
+    "id": "01J2Q8A4FQ8NA8R6YDJ2M98K3Q",
+    "conversation_id": "01J2Q7D4N5R8TK6VD3SZ1H0Y9M",
+    "content": "…",
+    "content_type": "text/plain",
+    "created_at": "2026-07-20T10:15:30.123Z",
+    "sequence": 0,
+    "review_status": "pending"
+  },
+  "message": null
+}
+```
+
+`sequence` is `0` because the message holds no position in the conversation,
+and `review_status` is `pending` while it waits in the review queue. Rendering
+it is up to the client — the reference clients show it as an "under review"
+bubble. An operator's approval later delivers the message in sequence under the
+**same** ID, so a client that already rendered the pending entry must replace it
+rather than append a second copy; a rejection discards the message and notifies
+the sender over the Gateway with a `message.review_rejected` event. The queue
+itself is documented in [`admin.md`](admin.md).
 
 ## Error responses
 

@@ -1,6 +1,7 @@
 package im_api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/auth"
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/moderation"
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/repo"
 	"github.com/gin-gonic/gin"
 )
@@ -44,6 +46,7 @@ func setupGroupTestRouter(t *testing.T) *gin.Engine {
 			email VARCHAR(255),
 			last_seen_at DATETIME,
 			token_version BIGINT NOT NULL DEFAULT 1,
+			labels TEXT NOT NULL DEFAULT '[]',
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -100,6 +103,20 @@ func setupGroupTestRouter(t *testing.T) *gin.Engine {
 			published_at DATETIME,
 			attempts INTEGER NOT NULL DEFAULT 0
 		)`,
+		`CREATE TABLE message_reviews (
+			id VARCHAR(26) NOT NULL UNIQUE,
+			conversation_id VARCHAR(26) NOT NULL,
+			sender_id BIGINT NOT NULL,
+			content TEXT NOT NULL,
+			content_type VARCHAR(32) NOT NULL,
+			flag_labels TEXT NOT NULL DEFAULT '[]',
+			flag_matches TEXT NOT NULL DEFAULT '[]',
+			status VARCHAR(16) NOT NULL DEFAULT 'pending',
+			message_id VARCHAR(26),
+			reviewed_by VARCHAR(255),
+			reviewed_at DATETIME,
+			created_at DATETIME NOT NULL
+		)`,
 	}
 	for _, statement := range schema {
 		if _, err := db.Exec(statement); err != nil {
@@ -116,10 +133,27 @@ func setupGroupTestRouter(t *testing.T) *gin.Engine {
 		}
 	}
 
+	// The moderation service is not running here, and the send path holds a
+	// message back whenever it cannot reach it. Tests that exercise screening
+	// install their own verdict over this one.
+	screenWith(t, moderation.ScreenResult{}, nil)
+
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	Routes(router.Group("/api/v1"))
 	return router
+}
+
+// screenWith stands in for the moderation service for the rest of the test:
+// it answers with result, or with err when the service is meant to be
+// unreachable.
+func screenWith(t *testing.T, result moderation.ScreenResult, err error) {
+	t.Helper()
+	previous := moderation.ScreenContent
+	moderation.ScreenContent = func(context.Context, string) (moderation.ScreenResult, error) {
+		return result, err
+	}
+	t.Cleanup(func() { moderation.ScreenContent = previous })
 }
 
 func TestCreateGroup(t *testing.T) {

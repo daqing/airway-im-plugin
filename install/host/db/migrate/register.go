@@ -14,6 +14,8 @@ func Register() {
 		RegisterUsers()
 		RegisterIMCore()
 		RegisterMessageModeration()
+		RegisterMessageReviewQueue()
+		RegisterMessageReviewFlagMatches()
 		RegisterUserTokenVersion()
 	})
 }

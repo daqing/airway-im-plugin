@@ -16,8 +16,11 @@ type User struct {
 	Email        *string    `db:"email" json:"email"`
 	LastSeenAt   *time.Time `db:"last_seen_at" json:"last_seen_at"`
 	TokenVersion int64      `db:"token_version" json:"-"`
-	CreatedAt    time.Time  `db:"created_at" json:"created_at"`
-	UpdatedAt    time.Time  `db:"updated_at" json:"updated_at"`
+	// Labels holds the raw JSON array text of users.labels; read and extend it
+	// through the moderation package.
+	Labels    string    `db:"labels" json:"-"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
 func (User) TableName() string { return "users" }

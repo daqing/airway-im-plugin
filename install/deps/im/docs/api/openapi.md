@@ -1183,7 +1183,15 @@ components:
             conversation starting at 1; combined with conversation_id it forms
             the total order clients sort by. History polling passes the last
             seen sequence as after_sequence. An idempotent replay returns the
-            original message with its original sequence.
+            original message with its original sequence. A message held for
+            review has no position yet and reports 0.
+        review_status:
+          type: string
+          enum: [pending, rejected]
+          description: >-
+            Present only on messages held for operator review. pending means
+            the message is queued and reaches no member yet; rejected means an
+            operator discarded it. Delivered messages omit the field.
 
     AdminConversation:
       type: object
@@ -1358,6 +1366,8 @@ components:
           type: string
           default: text/markdown
           enum: [text/markdown, text/plain]
+        labels:
+          $ref: '#/components/schemas/MessageLabels'
 
     CreateConversationMessageRequest:
       type: object
@@ -1372,6 +1382,22 @@ components:
           type: string
           default: text/markdown
           enum: [text/markdown, text/plain]
+        labels:
+          $ref: '#/components/schemas/MessageLabels'
+
+    MessageLabels:
+      type: array
+      maxItems: 16
+      description: >-
+        Screening results the sending client already knows about. illegal asks
+        the server to hold the message for operator review; the server screens
+        the content against the moderation service's word list as well, so
+        omitting a hit does not get a message delivered. Labels are at most 32
+        characters each and are recorded with the queued message for the
+        operator.
+      items:
+        type: string
+        maxLength: 32
 
     ErrorEnvelope:
       type: object
@@ -1559,7 +1585,8 @@ spelled out here.
 | `content` | string | The message body, 1–32768 UTF-8 encoded bytes. Line endings are normalized to LF before storage, so a CRLF send round-trips as LF. If the message was marked illegal, `content` is the literal `***` — treat that as a placeholder, not as user text. |
 | `content_type` | string | `text/markdown` or `text/plain`; rendering hint chosen by the sender (`text/markdown` when the create request omitted it). Render `content` accordingly. |
 | `created_at` | string, RFC 3339 UTC | Commit timestamp set by the server; the client cannot influence it. Display it converted to the viewer's local time zone. |
-| `sequence` | integer ≥ 1 | Position of the message within its conversation. Allocated transactionally at commit, monotonically increasing per conversation starting at 1. `(conversation_id, sequence)` is the total order clients sort by. |
+| `sequence` | integer ≥ 1 | Position of the message within its conversation. Allocated transactionally at commit, monotonically increasing per conversation starting at 1. `(conversation_id, sequence)` is the total order clients sort by. A message held for review has no position yet and reports `0`. |
+| `review_status` | string, optional | `pending` while the message waits in the review queue, `rejected` once an operator discarded it. Delivered messages omit the field. |
 
 Usage notes for clients:
 
@@ -1575,6 +1602,13 @@ Usage notes for clients:
 - **Idempotent retries.** Replaying a send with the same `Idempotency-Key`
   answers `200` with the original message — including its original `id` and
   `sequence` — so a retried send must not create a second local entry.
+- **Held for review.** A send that screens as illegal comes back as a normal
+  `201` with `sequence` `0` and `review_status` `pending`: the message exists
+  under its own `id` but reaches no member. Approval later delivers it under
+  that same `id`, so replace the pending entry in place instead of appending a
+  second one; rejection arrives as the gateway `message.review_rejected` event
+  for that `id`. Screening calls the moderation service, and is fail-closed:
+  while that service is unreachable every send is queued.
 - **Moderation.** After an administrator marks a message illegal, reads return
   `content` as `***`; the gateway `message.moderated` event carries the
   affected `message_id` and `sequence`, and the client should reload from

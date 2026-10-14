@@ -15,4 +15,7 @@ func Routes(r *gin.RouterGroup) {
 	protected.GET("/conversations", ListConversations)
 	protected.GET("/conversations/:conversation_uuid/messages", ListConversationMessages)
 	protected.POST("/messages/:message_uuid/mark-illegal", MarkMessageIllegal)
+	protected.GET("/reviews", ListReviews)
+	protected.POST("/reviews/:review_id/approve", ApproveReview)
+	protected.POST("/reviews/:review_id/reject", RejectReview)
 }

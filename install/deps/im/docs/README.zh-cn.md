@@ -140,6 +140,17 @@ pending/published 计数与积压时长就取自 `published_at` —— 因此表
   在线连接。
 - 会话浏览覆盖群聊**与**单聊，支持消息查看与一键 `mark-illegal`：违规内容
   对客户端屏蔽为 `***`，并向在线成员扇出 `message.moderated` 事件。
+- 投递前复查队列：客户端本地判定为 `illegal` 的消息、敏感词过滤服务命中的
+  消息，以及已被运营打上 `illegal` 标签的用户发出的消息，都不直接投递，
+  而是进入复查队列。运营**放行**后消息以复查记录自身的 id 正式投递（发送者
+  那条"审核中"气泡原地升级，不会重复），**驳回**则消息作废、发送者被打上
+  `illegal` 标签，并向其定向推送 `message.review_rejected` 事件。复查队列里
+  能看到过滤服务命中的具体词，而不只是"命中了"。
+- 过滤本身是对
+  [moderation 插件](https://github.com/daqing/airway-moderation-plugin)的一次
+  HTTP 调用，词表由该服务唯一持有，本插件不再自带词表。判定权只在服务一侧，
+  调用失败时消息进复查队列而不是被投递 —— 过滤服务不可用会让所有消息都排队，
+  这是刻意的：宁可积压，不可漏审。
 
 **可观测性**
 
@@ -179,7 +190,7 @@ pending/published 计数与积压时长就取自 `published_at` —— 因此表
 | `app/models` | `User` 模型与 REPL 注册 |
 | `app/repo` | 框架 `database/sql` 连接池之上的轻量 sqlx 门面 |
 | `app/utils` | 会话/消息/事件 ID 使用的 ULID 生成器 |
-| `host/db/migrate` | 表结构迁移（用户、会话、成员、消息、幂等、outbox、审核） |
+| `host/db/migrate` | 表结构迁移（用户、会话、成员、消息、幂等、outbox、审核、复查队列） |
 
 ## 安装与启动
 
@@ -412,14 +423,15 @@ HTTP API 一览：
 
 界面是插件二进制自带的内嵌 Preact bundle（TanStack Query + TanStack
 Table，基于 airway-ui 组件集副本）—— 无需额外部署，宿主项目也不需要
-JavaScript 工具链。四个页面覆盖了 `/admin/api` 的全部能力：
+JavaScript 工具链。五个页面覆盖了 `/admin/api` 的全部能力：
 
 | 页面 | 功能 |
 | --- | --- |
 | **概览（Overview）** | 注册用户数、在线人数、outbox 待发布/已发布（含积压时长与失败次数）、gateway/delivery 实时指标面板；每 15 秒自动刷新，服务异常时明确标注。 |
-| **用户（Users）** | 可搜索的身份目录（用户名、昵称、邮箱、UUID、最近活跃、token 版本），一键**吊销凭证** —— 递增 `token_version` 并显示踢掉了多少条在线连接。 |
+| **用户（Users）** | 可搜索的身份目录（用户名、昵称、邮箱、UUID、最近活跃、token 版本、审核标签），一键**吊销凭证** —— 递增 `token_version` 并显示踢掉了多少条在线连接。 |
 | **会话（Conversations）** | 群聊与单聊分两个标签页 —— 群聊显示成员/消息数，单聊以参与者组合标识；支持统一搜索，点击行即可查看消息。 |
 | **消息（Messages）** | 按会话查看完整消息（sequence、发送者、内容、类型、状态）；打开详情并可**标记违规** —— 内容对客户端屏蔽为 `***`，并向在线成员扇出 `message.moderated` 事件。 |
+| **复查队列（Review queue）** | 待投递的消息按待审/已放行/已驳回三个标签页列出，显示入队时间、发送者、会话、命中的标签，点击可查看完整内容；**放行**把待审消息投递进会话，**驳回**则作废该消息并给发送者打上 `illegal` 标签。 |
 
 需要程序化访问同一能力时，使用 `/admin/api` 的 HTTP 端点
 （[`deps/im/docs/api/admin.md`](api/admin.md)）。
@@ -436,6 +448,8 @@ JavaScript 工具链。四个页面覆盖了 `/admin/api` 的全部能力：
 | `IM_AUTH_SECRET_PREVIOUS` | backend | — | 轮换期间同时接受的旧签名密钥（可选） |
 | `IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD` | backend | — | 管理后台凭据 |
 | `IM_GATEWAY_URL` | backend | `http://127.0.0.1:1910` | 管理后台在线状态聚合与撤销踢连使用的 gateway 基础 URL |
+| `IM_MODERATION_URL` | backend | `http://127.0.0.1:1905/api/v1/moderation` | 敏感词过滤服务基础 URL；调用不通时消息进入复查队列 |
+| `MODERATION_SECRET` | backend | — | 提交给过滤服务的共享密钥，需与 moderation 插件的配置一致 |
 | `IM_INTERNAL_SECRET` | 全部 | — | `/internal/v1/*` 与网关投递端点的共享密钥；实时投递**必需** |
 | `IM_INTERNAL_ADDR` | backend | `127.0.0.1:1906` | 内部 API（`/internal/v1/*`）监听地址；勿暴露到公网 |
 | `ADMIN_GATEWAY_METRICS_URL` / `ADMIN_DELIVERY_METRICS_URL` | backend | 本机的 gateway/delivery | 管理状态聚合的指标端点 |
@@ -462,9 +476,11 @@ TanStack Query/Table + airway-ui 组件集副本）。提交的 `web/dist` bundl
 管理后台本身时才需要运行 `just dashboard` 并提交产物。
 
 测试覆盖：会话创建（单聊唯一性、成员校验）、消息持久化（幂等、
-违规内容屏蔽、outbox 事件）、资料查询、管理端点与路由注册。整套服务
-还做过本地端到端验证：凭证签发 → 建群 → 发消息 → outbox 轮询 →
-网关推送 → WebSocket 收到事件 → outbox 确认。
+违规内容屏蔽、outbox 事件）、投递前复查队列（客户端上报标记、服务端敏感词
+命中、已标记用户三种入队路径，以及放行与驳回）、资料查询、管理端点与路由注册。
+整套服务还做过本地端到端验证：凭证签发 → 建群 → 发消息 → outbox 轮询 →
+网关推送 → WebSocket 收到事件 → outbox 确认，以及命中复查 → 运营放行 →
+以复查记录 id 落库并产出 `message.created` 事件。
 
 ---
 

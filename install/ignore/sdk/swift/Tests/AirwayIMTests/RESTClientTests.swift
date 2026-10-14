@@ -198,6 +198,39 @@ struct RESTClientTests {
         #expect(keys.all[1] != keys.all[0])
     }
 
+    @Test("sendMessage forwards labels and surfaces a queued message as pending")
+    func sendMessageQueuedForReview() async throws {
+        let bodies = Capture<[String: Any]>()
+        try await withServer({ request in
+            bodies.append(try JSONSerialization.jsonObject(with: request.body) as? [String: Any] ?? [:])
+            return StubResponse(json: envelope([
+                "id": "01J", "conversation_id": "01AB",
+                "sender": ["uuid": "u1", "username": "alice", "nickname": nil, "avatar_url": nil],
+                "content": "hi", "content_type": "text/markdown",
+                "created_at": "t", "sequence": 0, "review_status": "pending",
+            ]))
+        }, { _, client in
+            let message = try await client.sendMessage("01AB", "hi", labels: ["illegal"])
+            #expect(message.reviewStatus == "pending")
+            #expect(message.sequence == 0)
+            #expect(bodies.all.count == 1)
+            #expect(bodies.all[0]["labels"] as? [String] == ["illegal"])
+        })
+    }
+
+    @Test("sendMessage sends an empty label list without screening hits")
+    func sendMessageWithoutLabels() async throws {
+        let bodies = Capture<[String: Any]>()
+        try await withServer({ request in
+            bodies.append(try JSONSerialization.jsonObject(with: request.body) as? [String: Any] ?? [:])
+            return StubResponse(json: envelope(message(sequence: 1)))
+        }, { _, client in
+            let message = try await client.sendMessage("01AB", "m1")
+            #expect(message.reviewStatus == nil)
+            #expect(bodies.all[0]["labels"] as? [String] == [])
+        })
+    }
+
     @Test("auth errors trigger one renewal and retry with the fresh credential")
     func credentialRenewal() async throws {
         let authHeaders = Capture<String>()

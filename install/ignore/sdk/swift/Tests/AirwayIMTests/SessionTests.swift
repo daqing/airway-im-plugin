@@ -39,6 +39,15 @@ struct SessionTests {
                 return StubResponse(json: envelope([String]()))
             case ("POST", "/api/v1/messages"):
                 let body = try request.jsonBody()
+                // Screened messages come back parked in the review queue:
+                // no sequence, and a review_status instead.
+                if let labels = body["labels"] as? [String], !labels.isEmpty {
+                    var queued = Self.message(sequence: 0)
+                    queued["conversation_id"] = body["conversation_id"]
+                    queued["content"] = body["content"]
+                    queued["review_status"] = "pending"
+                    return StubResponse(json: envelope(queued))
+                }
                 var message = Self.message(sequence: (body["content"] as? String == "third") ? 3 : 99)
                 message["conversation_id"] = body["conversation_id"]
                 message["content"] = body["content"]
@@ -246,6 +255,23 @@ struct SessionTests {
 
         let viaHandle = try await group.send("via handle")
         #expect(viaHandle.content == "via handle")
+    }
+
+    @Test("a screened message reports pending and leaves the sync cursor alone")
+    func sendGroupMessageHeldForReview() async throws {
+        let server = try Self.makeServer()
+        server.start()
+        defer { server.stop() }
+
+        let im = AirwayIM(apiURL: server.baseURL, credential: "c", persistSequences: false)
+
+        let queued = try await im.sendGroupMessage("01GROUP01", "flagged", labels: ["illegal"])
+        #expect(queued.reviewStatus == "pending")
+        #expect(queued.sequence == 0)
+        // Nothing was delivered, so the cursor must not move: a later page
+        // fetch would otherwise skip the messages that follow.
+        let cursor = await im.lastSequence("01GROUP01")
+        #expect(cursor == 0)
     }
 
     @Test("REST-only sessions report an error from connect() instead of crashing")

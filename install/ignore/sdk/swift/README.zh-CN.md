@@ -169,7 +169,11 @@ NotificationCenter.default.addObserver(
 | `im.storageURL(key)` | 文件下载 URL |
 
 发送参数:`contentType`(`.markdown` 默认 / `.plain`)、`idempotencyKey`
-(默认自动生成)、`retries`(网络失败重试次数,默认 1)。
+(默认自动生成)、`retries`(网络失败重试次数,默认 1)、`labels`(默认 `[]`)。
+
+自己本地过滤命中时传 `labels: ["illegal"]`。服务端会再复查一遍内容,命中则不投
+递、而是把消息扣进运营复查队列:这次发送返回的消息 `reviewStatus == "pending"`、
+`sequence == 0`,同步游标保持不动。
 
 ### 会话句柄(`DirectConversation` / `GroupConversation`)
 
@@ -223,11 +227,17 @@ NotificationCenter.default.addObserver(
 | `content` | string | 消息体,1–32768 UTF-8 字节,服务端把 CRLF 规范为 LF。被审核的消息读回字面 `***`。 |
 | `contentType` | string | `text/markdown`(默认)或 `text/plain` —— 决定 `content` 如何渲染。 |
 | `createdAt` | string,RFC 3339 UTC | 服务端提交时间戳;展示时转换为用户本地时区。 |
-| `sequence` | integer ≥ 1 | 提交时分配的会话内位置。`(conversationId, sequence)` 是排序的总顺序。 |
+| `sequence` | integer ≥ 1 | 提交时分配的会话内位置。`(conversationId, sequence)` 是排序的总顺序。等待复查期间为 `0`。 |
+| `reviewStatus` | string? | 消息在运营复查队列中时为 `pending`,被运营驳回后为 `rejected`,已投递的消息为 nil。 |
 
 排序用 `sequence`,不要用 `createdAt`。同一幂等键的重试返回原消息(相同 `id` 与
 `sequence`);实时事件的去重与补洞 SDK 已经处理。`sender` 反映作者当前资料,
 不是发送时快照。
+
+被扣下复查的消息只有在运营放行后才会到达会话:放行以普通 `message.created` 事件
+下发,`id` 与本地那条相同,所以应当整条替换而不是再追加一条。驳回则以
+`GatewayEventType.messageReviewRejected` 从 `onEvent` 到达,带同一个 `id`、不带
+sequence —— 用 `message.withReviewStatus(MessageReviewStatus.rejected)` 标记本地气泡。
 
 ### `InternalClient`(内部铸造接口,默认 `127.0.0.1:1906`)
 

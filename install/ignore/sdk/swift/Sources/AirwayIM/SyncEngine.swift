@@ -150,7 +150,7 @@ actor SyncEngine {
     ) -> Task<Value, Error> {
         let previous = queueTails[conversationId]
         let task = Task<Value, Error> {
-            if let previous { _ = try? await previous.value }
+            if let previous { _ = await previous.value }
             return try await operation()
         }
         queueTails[conversationId] = Task<Void, Never> {

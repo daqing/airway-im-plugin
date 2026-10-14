@@ -28,8 +28,23 @@ func setupAdminRouter(t *testing.T) *gin.Engine {
         email VARCHAR(255),
         last_seen_at DATETIME,
         token_version BIGINT NOT NULL DEFAULT 1,
+        labels TEXT NOT NULL DEFAULT '[]',
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE message_reviews (
+        id VARCHAR(26) NOT NULL UNIQUE,
+        conversation_id VARCHAR(26) NOT NULL,
+        sender_id BIGINT NOT NULL,
+        content TEXT NOT NULL,
+        content_type VARCHAR(32) NOT NULL,
+        flag_labels TEXT NOT NULL DEFAULT '[]',
+        flag_matches TEXT NOT NULL DEFAULT '[]',
+        status VARCHAR(16) NOT NULL DEFAULT 'pending',
+        message_id VARCHAR(26),
+        reviewed_by VARCHAR(255),
+        reviewed_at DATETIME,
+        created_at DATETIME NOT NULL
     );
     CREATE TABLE outbox_events (
         id VARCHAR(26) UNIQUE,

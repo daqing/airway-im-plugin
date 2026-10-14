@@ -316,15 +316,18 @@ public actor AirwayIM {
 
     /// Send a message to a group conversation by id. Returns the stored
     /// message; the local sequence tracker is updated so the sender's own
-    /// message.created event does not trigger a redundant fetch. The
-    /// message is emitted via `onMessage` only when it arrives back through
+    /// message.created event does not trigger a redundant fetch. A message
+    /// held for review has no sequence and is not tracked — it reaches the
+    /// conversation later, if an operator approves it. The message is
+    /// emitted via `onMessage` only when it arrives back through
     /// realtime/sync (at-least-once) — use the return value for immediate
-    /// UI feedback.
+    /// UI feedback. `labels` carries client-side screening results.
     @discardableResult
     public func sendGroupMessage(
         _ conversationId: String,
         _ content: String,
         contentType: ContentType = .markdown,
+        labels: [String] = [],
         idempotencyKey: String? = nil,
         retries: Int = 1
     ) async throws -> ChatMessage {
@@ -332,9 +335,12 @@ public actor AirwayIM {
         let message = try await rest.sendMessage(
             conversationId, content,
             contentType: contentType,
+            labels: labels,
             idempotencyKey: idempotencyKey,
             retries: retries)
-        await sync.track(conversationId, message.sequence)
+        if message.reviewStatus == nil {
+            await sync.track(conversationId, message.sequence)
+        }
         return message
     }
 
@@ -346,15 +352,19 @@ public actor AirwayIM {
         _ otherUserUUID: String,
         _ content: String,
         contentType: ContentType = .markdown,
+        labels: [String] = [],
         idempotencyKey: String? = nil,
         retries: Int = 1
     ) async throws -> ChatMessage {
         let message = try await rest.sendDirectMessage(
             otherUserUUID, content,
             contentType: contentType,
+            labels: labels,
             idempotencyKey: idempotencyKey,
             retries: retries)
-        await sync.track(message.conversationId, message.sequence)
+        if message.reviewStatus == nil {
+            await sync.track(message.conversationId, message.sequence)
+        }
         return message
     }
 
@@ -378,7 +388,7 @@ public actor AirwayIM {
 
     /// Public URL for a storage key (for `<img src>`, downloads, …).
     public func storageURL(_ key: String) async -> URL {
-        await rest.storageURL(key)
+        rest.storageURL(key)
     }
 
     // ---- Internal routing ----

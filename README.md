@@ -181,6 +181,19 @@ Design contracts:
 - Conversation browser for groups **and** direct messages, message viewer,
   and one-click `mark-illegal`: illegal content is masked to `***` for
   clients and a `message.moderated` event fans out to online members.
+- Pre-delivery review queue: a message the client screened as `illegal`, one
+  the moderation service's word list matches, or one from a sender an operator
+  has labeled `illegal` is queued instead of delivered. An operator **approves**
+  it (released under the review record's own id, so the sender's pending
+  bubble becomes that message) or **rejects** it (discarded, sender labeled
+  `illegal`, targeted `message.review_rejected` event). The queue shows the
+  words the moderation service matched, not just that it matched something.
+- Screening is a call to the
+  [moderation plugin](https://github.com/daqing/airway-moderation-plugin),
+  which owns the word list; this plugin keeps none of its own. The service is
+  the only thing that decides, and a call that fails holds the message for
+  review rather than delivering it — an unreachable screening service queues
+  every message, which is deliberate: nothing is delivered unscreened.
 
 **Observability**
 
@@ -226,7 +239,7 @@ Key plugin packages (under `install/lib/im/`):
 | `app/models` | `User` model + REPL registry |
 | `app/repo` | Thin sqlx facade over the framework's `database/sql` pool |
 | `app/utils` | ULID generator used for conversation/message/event IDs |
-| `install/host/db/migrate` | Schema migrations (users, conversations, members, messages, idempotency, outbox, moderation) |
+| `install/host/db/migrate` | Schema migrations (users, conversations, members, messages, idempotency, outbox, moderation, review queue) |
 
 ## Setup
 
@@ -503,15 +516,16 @@ automatically.
 
 The UI is an embedded Preact bundle (TanStack Query + TanStack Table on a
 vendored copy of the airway-ui component set) served by the plugin binary
-itself — no extra deploy step, no JavaScript toolchain on the host. Four
+itself — no extra deploy step, no JavaScript toolchain on the host. Five
 pages cover the whole `/admin/api` surface:
 
 | Page | What you can do |
 | --- | --- |
 | **Overview** | Registered users, online count, outbox pending/published (with backlog age and failed attempts), and live gateway/delivery metrics panels; auto-refreshes every 15s and flags degraded services. |
-| **Users** | Searchable identity directory (username, nickname, email, UUID, last seen, token version) with one-click **credential revocation** — bumps `token_version` and reports how many live gateway connections were kicked. |
+| **Users** | Searchable identity directory (username, nickname, email, UUID, last seen, token version, moderation labels) with one-click **credential revocation** — bumps `token_version` and reports how many live gateway connections were kicked. |
 | **Conversations** | Group and direct conversations on two tabs — groups with member/message counts, direct chats labeled by their participant pair; search across both, click a row to inspect its messages. |
 | **Messages** | Per-conversation message list (sequence, sender, content, type, status); open a message for detail and **mark it illegal** — content is masked to `***` for clients and a `message.moderated` event fans out to online members. |
+| **Review queue** | Messages held before delivery on pending/approved/rejected tabs, with the queued time, sender, conversation, the labels that flagged them, and the full content behind a click; **Approve** releases a pending message into its conversation, **Reject** discards it and labels the sender `illegal`. |
 
 The same surface is available programmatically through the `/admin/api`
 endpoints documented in
@@ -529,6 +543,8 @@ endpoints documented in
 | `IM_AUTH_SECRET_PREVIOUS` | backend | — | Previous signing secret accepted during rotation (optional) |
 | `IM_ADMIN_USERNAME` / `IM_ADMIN_PASSWORD` | backend | — | Admin console credentials |
 | `IM_GATEWAY_URL` | backend | `http://127.0.0.1:1910` | Gateway base URL for admin online-status and revocation kicks |
+| `IM_MODERATION_URL` | backend | `http://127.0.0.1:1905/api/v1/moderation` | Moderation service base URL; a send is held for review when the service cannot be reached |
+| `MODERATION_SECRET` | backend | — | Shared secret presented to the moderation service; must match the moderation plugin's value |
 | `IM_INTERNAL_SECRET` | all | — | Shared secret for `/internal/v1/*` and the gateway deliver endpoint; **required** for realtime delivery |
 | `IM_INTERNAL_ADDR` | backend | `127.0.0.1:1906` | Listen address of the internal API (`/internal/v1/*`); keep it off the public network |
 | `ADMIN_GATEWAY_METRICS_URL` / `ADMIN_DELIVERY_METRICS_URL` | backend | gateway/delivery on localhost | Metrics endpoints aggregated by admin status |
@@ -557,10 +573,15 @@ hosts never need a JavaScript toolchain; only console changes require running
 
 The test suite covers conversation creation (direct uniqueness,
 member validation), message persistence (idempotency, moderation masking,
-outbox emission), profile lookup, admin endpoints, and route registration.
+outbox emission), the pre-delivery review queue (enqueue on client labels,
+a screening hit, an unreachable screening service or a labeled sender;
+approve; reject with a targeted notification), profile lookup, admin
+endpoints, and route registration. Screening is stubbed at the call the send
+path makes, so the tests need no moderation service running.
 The full stack was additionally verified end-to-end locally:
 credential minting → group creation → message send → outbox poll → gateway
-push → WebSocket receipt → outbox ack.
+push → WebSocket receipt → outbox ack, and flagged message → review queue →
+operator approve → message row and `message.created` event under the review id.
 
 ---
 

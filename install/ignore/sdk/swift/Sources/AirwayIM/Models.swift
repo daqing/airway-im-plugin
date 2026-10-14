@@ -91,8 +91,26 @@ public struct ChatMessage: Sendable, Codable, Equatable, Identifiable {
     /// RFC 3339 UTC server commit timestamp.
     public let createdAt: String
     /// Position within the conversation, ≥ 1; `(conversationId, sequence)`
-    /// is the total order.
+    /// is the total order. A message held for review has no position yet and
+    /// reports 0.
     public let sequence: Int
+    /// Moderation state of the message: `pending` while it waits in the
+    /// review queue, `rejected` once an operator discards it. Absent on
+    /// delivered messages.
+    public let reviewStatus: String?
+}
+
+public extension ChatMessage {
+    /// A copy carrying a different moderation state. Hosts use it when a
+    /// review decision reaches them as an event rather than as a message
+    /// (`message.review_rejected`), so a local queued bubble can be marked
+    /// without re-fetching it.
+    func withReviewStatus(_ reviewStatus: String?) -> ChatMessage {
+        ChatMessage(
+            id: id, conversationId: conversationId, sender: sender,
+            content: content, contentType: contentType, createdAt: createdAt,
+            sequence: sequence, reviewStatus: reviewStatus)
+    }
 }
 
 public struct UploadResult: Sendable, Codable, Equatable {
@@ -162,8 +180,19 @@ public struct HostNotification: Sendable, Equatable {
 public enum GatewayEventType {
     public static let messageCreated = "message.created"
     public static let messageModerated = "message.moderated"
+    /// Sent to the author alone when an operator discards their queued
+    /// message.
+    public static let messageReviewRejected = "message.review_rejected"
     public static let memberAdded = "conversation.member_added"
     public static let memberRemoved = "conversation.member_removed"
+}
+
+/// Values `ChatMessage.reviewStatus` can carry.
+public enum MessageReviewStatus {
+    /// Waiting in the review queue; not delivered to the conversation.
+    public static let pending = "pending"
+    /// Discarded by an operator; never delivered.
+    public static let rejected = "rejected"
 }
 
 public enum ConnectionStatus: String, Sendable {

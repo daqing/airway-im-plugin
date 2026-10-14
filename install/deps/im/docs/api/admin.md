@@ -17,10 +17,38 @@ hours; restarting the backend invalidates all sessions.
 | `GET` | `/admin/api/conversations` | List conversations of every kind with counters. Optional `?kind=group` or `?kind=direct` narrows the listing; direct entries carry their `participants`. |
 | `GET` | `/admin/api/conversations/{id}/messages` | List all messages in a conversation (group or direct). |
 | `POST` | `/admin/api/messages/{id}/mark-illegal` | Mask a message (group or direct) and notify online members. |
+| `GET` | `/admin/api/reviews` | List the pre-delivery review queue. Defaults to `?status=pending`; `approved` and `rejected` list decided entries. |
+| `POST` | `/admin/api/reviews/{review_id}/approve` | Deliver a queued message, reusing the review id as the message id. |
+| `POST` | `/admin/api/reviews/{review_id}/reject` | Discard a queued message, label its sender `illegal`, and notify that sender. |
 
 Protected operations use `Authorization: Bearer <admin-session-token>`. Admin
 session tokens and user credentials are different credential types and cannot
 be substituted for one another.
+
+## Review queue
+
+A message is queued instead of delivered when the sending client reported it
+as screened (`labels: ["illegal"]`), when the moderation service's word list
+matches its content, or when the sender already carries the `illegal` label.
+Queued messages live in `message_reviews` with status `pending`; they hold no
+`sequence` and reach no member.
+
+Each queued entry records `flag_matches`: the words the moderation service
+found, so an operator can see why the message was held. When the service could
+not be reached the entry holds `["screening-unavailable"]` instead — the
+message is queued because nobody screened it, not because it matched. Screening
+is fail-closed: while the moderation service is down every message is queued.
+
+Approving a review releases the message into its conversation under the
+review record's own id, so a client that already rendered the pending
+message replaces it instead of showing a duplicate. Rejecting it discards the
+message, appends `illegal` to `users.labels` (so the sender's later messages
+are queued too), and pushes a `message.review_rejected` Gateway event to that
+sender alone.
+
+Both endpoints return the updated review record and are idempotent per
+decision: acting twice on the same entry returns 409, an unknown id returns
+404.
 
 The plugin ships no user login flow. Users register automatically the first
 time an Airway-signed credential authenticates (see

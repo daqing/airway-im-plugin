@@ -13,21 +13,32 @@ import (
 	"unicode/utf8"
 
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/models"
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/moderation"
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/repo"
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/services"
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )
 
+// maxLabels and maxLabelLength bound what a client may report as its own
+// screening verdict; labels are a small fixed vocabulary, not free text.
+const (
+	maxLabels      = 16
+	maxLabelLength = 32
+)
+
 type createMessageRequest struct {
-	ConversationID string `json:"conversation_id"`
-	Content        string `json:"content"`
-	ContentType    string `json:"content_type"`
+	ConversationID string            `json:"conversation_id"`
+	Content        string            `json:"content"`
+	ContentType    string            `json:"content_type"`
+	Labels         moderation.Labels `json:"labels"`
 }
 
 type createConversationMessageRequest struct {
-	Content     string `json:"content"`
-	ContentType string `json:"content_type"`
+	Content     string            `json:"content"`
+	ContentType string            `json:"content_type"`
+	Labels      moderation.Labels `json:"labels"`
 }
 
 type senderResponse struct {
@@ -45,6 +56,9 @@ type messageResponse struct {
 	ContentType    string         `db:"content_type" json:"content_type"`
 	CreatedAt      time.Time      `db:"created_at" json:"created_at"`
 	Sequence       int64          `db:"sequence" json:"sequence"`
+	// ReviewStatus is set only on a queued response: the message is held for
+	// human review, carries sequence 0, and has not reached any member.
+	ReviewStatus string `json:"review_status,omitempty"`
 }
 
 type messageRow struct {
@@ -88,6 +102,7 @@ func CreateConversationMessage(c *gin.Context) {
 		ConversationID: c.Param("conversation_uuid"),
 		Content:        request.Content,
 		ContentType:    request.ContentType,
+		Labels:         request.Labels,
 	})
 }
 
@@ -102,6 +117,12 @@ func createMessage(c *gin.Context, user *models.User, request createMessageReque
 		respondError(c, http.StatusBadRequest, 10003, "Invalid message fields")
 		return
 	}
+	labels, err := normalizeLabels(request.Labels)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, 10003, "Invalid message fields")
+		return
+	}
+	request.Labels = labels
 
 	db := repo.CurrentDB()
 	member, err := activeMember(db, request.ConversationID, user.ID)
@@ -132,11 +153,22 @@ func createMessage(c *gin.Context, user *models.User, request createMessageReque
 				return
 			}
 			message, loadErr := loadMessage(db, messageID)
-			if loadErr != nil {
+			if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
 				respondError(c, http.StatusInternalServerError, 10000, "Could not load message")
 				return
 			}
-			respond(c, http.StatusOK, message)
+			if loadErr == nil {
+				respond(c, http.StatusOK, message)
+				return
+			}
+			// The key may also point at a queued message: nothing was
+			// delivered, so the retry replays the same review record.
+			queued, reviewErr := loadReviewedMessage(db, messageID)
+			if reviewErr != nil || queued == nil {
+				respondError(c, http.StatusInternalServerError, 10000, "Could not load message")
+				return
+			}
+			respond(c, http.StatusOK, queued)
 			return
 		}
 	}
@@ -146,41 +178,39 @@ func createMessage(c *gin.Context, user *models.User, request createMessageReque
 		respondError(c, http.StatusInternalServerError, 10000, "Could not create message")
 		return
 	}
-	eventID, err := utils.NewULID()
+	now := time.Now().UTC()
+
+	// The moderation service owns the word list. It failing is not a pass:
+	// the message is held for review, so nothing is delivered unscreened.
+	screen, screenErr := moderation.ScreenContent(c.Request.Context(), request.Content)
+	flagged := screenErr != nil || screen.Flagged
+	flagMatches := screen.Words
+	if screenErr != nil {
+		flagMatches = []string{moderation.ScreeningUnavailable}
+	}
+	restricted, err := moderation.UserHasLabel(db, user.ID, moderation.LabelIllegal)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, 10000, "Could not create message")
 		return
 	}
-	now := time.Now().UTC()
+	if flagged || restricted || request.Labels.Has(moderation.LabelIllegal) {
+		if err := enqueueReview(db, user, request, messageID, flagged, flagMatches, hash, key, now); err != nil {
+			respondError(c, http.StatusInternalServerError, 10000, "Could not create message")
+			return
+		}
+		respond(c, http.StatusCreated, messageResponse{ID: messageID, ConversationID: request.ConversationID, Sender: senderResponse{UUID: user.UUID, Username: user.Username, Nickname: user.Nickname, AvatarURL: user.AvatarURL}, Content: request.Content, ContentType: request.ContentType, CreatedAt: now, ReviewStatus: moderation.ReviewPending})
+		return
+	}
+
 	var sequence int64
 	err = repo.Tx(db, func(tx *sqlx.Tx) error {
-		result, err := tx.Exec(tx.Rebind("UPDATE conversations SET next_sequence = next_sequence + 1, updated_at = ? WHERE id = ?"), now, request.ConversationID)
-		if err != nil {
-			return err
-		}
-		if affected, _ := result.RowsAffected(); affected != 1 {
-			return sql.ErrNoRows
-		}
-		if err := tx.Get(&sequence, tx.Rebind("SELECT next_sequence - 1 FROM conversations WHERE id = ?"), request.ConversationID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(tx.Rebind("INSERT INTO messages (id, conversation_id, sender_id, content, content_type, sequence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"), messageID, request.ConversationID, user.ID, request.Content, request.ContentType, sequence, now); err != nil {
-			return err
-		}
 		if key != "" {
 			if _, err := tx.Exec(tx.Rebind("INSERT INTO message_idempotency (user_id, idempotency_key, request_hash, message_id, created_at) VALUES (?, ?, ?, ?, ?)"), user.ID, key, hash, messageID, now); err != nil {
 				return err
 			}
 		}
-		var targets []string
-		if err := tx.Select(&targets, tx.Rebind("SELECT u.uuid FROM conversation_members cm JOIN users u ON u.id = cm.user_id WHERE cm.conversation_id = ? AND cm.left_at IS NULL"), request.ConversationID); err != nil {
-			return err
-		}
-		payload, err := json.Marshal(gin.H{"event_id": eventID, "event": "message.created", "message_id": messageID, "conversation_id": request.ConversationID, "sequence": sequence, "targets": gin.H{"user_uuids": targets}})
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(tx.Rebind("INSERT INTO outbox_events (id, topic, aggregate_id, payload, created_at, attempts) VALUES (?, 'message.created', ?, ?, ?, 0)"), eventID, messageID, string(payload), now)
+		var err error
+		sequence, err = services.ReleaseMessage(tx, request.ConversationID, messageID, user.ID, request.Content, request.ContentType, now)
 		return err
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -192,6 +222,37 @@ func createMessage(c *gin.Context, user *models.User, request createMessageReque
 		return
 	}
 	respond(c, http.StatusCreated, messageResponse{ID: messageID, ConversationID: request.ConversationID, Sender: senderResponse{UUID: user.UUID, Username: user.Username, Nickname: user.Nickname, AvatarURL: user.AvatarURL}, Content: request.Content, ContentType: request.ContentType, CreatedAt: now, Sequence: sequence})
+}
+
+// enqueueReview parks a flagged message in message_reviews. The record id is
+// the id the message takes if it is approved, so a client can dedupe its
+// "pending" bubble against the delivered message, and nothing reaches a
+// member until an operator decides. flagMatches records what the screening
+// service found, so an operator reads why the message was held.
+func enqueueReview(db *sqlx.DB, user *models.User, request createMessageRequest, messageID string, serverFlagged bool, flagMatches []string, hash, key string, now time.Time) error {
+	flagLabels := request.Labels
+	if serverFlagged {
+		flagLabels = flagLabels.With(moderation.LabelIllegal)
+	}
+	encoded, err := flagLabels.JSON()
+	if err != nil {
+		return err
+	}
+	encodedMatches, err := moderation.Labels(flagMatches).JSON()
+	if err != nil {
+		return err
+	}
+	return repo.Tx(db, func(tx *sqlx.Tx) error {
+		if _, err := tx.Exec(tx.Rebind("INSERT INTO message_reviews (id, conversation_id, sender_id, content, content_type, flag_labels, flag_matches, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"), messageID, request.ConversationID, user.ID, request.Content, request.ContentType, encoded, encodedMatches, moderation.ReviewPending, now); err != nil {
+			return err
+		}
+		if key != "" {
+			if _, err := tx.Exec(tx.Rebind("INSERT INTO message_idempotency (user_id, idempotency_key, request_hash, message_id, created_at) VALUES (?, ?, ?, ?, ?)"), user.ID, key, hash, messageID, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func ListMessages(c *gin.Context) {
@@ -244,6 +305,27 @@ func requestHash(request createMessageRequest) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// normalizeLabels trims and de-dupes the labels a client reports for its own
+// message, rejecting a set no real client sends so the queue cannot be filled
+// with junk.
+func normalizeLabels(labels []string) (moderation.Labels, error) {
+	if len(labels) > maxLabels {
+		return nil, errors.New("too many labels")
+	}
+	normalized := moderation.Labels{}
+	for _, label := range labels {
+		trimmed := strings.TrimSpace(label)
+		if trimmed == "" {
+			continue
+		}
+		if len(trimmed) > maxLabelLength {
+			return nil, errors.New("label is too long")
+		}
+		normalized = normalized.With(trimmed)
+	}
+	return normalized, nil
+}
+
 func lookupIdempotency(db *sqlx.DB, userID int64, key string) (string, string, bool, error) {
 	var value struct {
 		Hash      string `db:"request_hash"`
@@ -264,4 +346,39 @@ func loadMessage(db *sqlx.DB, messageID string) (*messageResponse, error) {
 	}
 	response := row.response()
 	return &response, nil
+}
+
+// loadReviewedMessage reads a queued message back in the shape a client sent
+// it: sequence 0 and the review status, so a retried send replays the same
+// pending (or rejected) response. It returns nil, nil when the id is neither
+// a delivered nor a queued message.
+func loadReviewedMessage(db *sqlx.DB, messageID string) (*messageResponse, error) {
+	var row struct {
+		ID             string    `db:"id"`
+		ConversationID string    `db:"conversation_id"`
+		SenderUUID     string    `db:"sender_uuid"`
+		Username       string    `db:"username"`
+		Nickname       *string   `db:"nickname"`
+		AvatarURL      *string   `db:"avatar_url"`
+		Content        string    `db:"content"`
+		ContentType    string    `db:"content_type"`
+		CreatedAt      time.Time `db:"created_at"`
+		Status         string    `db:"status"`
+	}
+	query := "SELECT r.id, r.conversation_id, u.uuid AS sender_uuid, u.username, u.nickname, u.avatar_url, r.content, r.content_type, r.created_at, r.status FROM message_reviews r JOIN users u ON u.id = r.sender_id WHERE r.id = ?"
+	if err := db.Get(&row, db.Rebind(query), messageID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &messageResponse{
+		ID:             row.ID,
+		ConversationID: row.ConversationID,
+		Sender:         senderResponse{UUID: row.SenderUUID, Username: row.Username, Nickname: row.Nickname, AvatarURL: row.AvatarURL},
+		Content:        row.Content,
+		ContentType:    row.ContentType,
+		CreatedAt:      row.CreatedAt,
+		ReviewStatus:   row.Status,
+	}, nil
 }

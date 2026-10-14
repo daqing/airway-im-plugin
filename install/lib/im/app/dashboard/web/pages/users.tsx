@@ -88,6 +88,23 @@ export function Users() {
         cell: (ctx) => ctx.row.original.email ?? <span class="admin-cell-muted">—</span>,
       },
       {
+        header: "Labels",
+        accessorKey: "labels",
+        enableSorting: false,
+        cell: (ctx) =>
+          (ctx.row.original.labels ?? []).length === 0 ? (
+            <span class="admin-cell-muted">—</span>
+          ) : (
+            <div class="admin-label-chips">
+              {ctx.row.original.labels.map((label) => (
+                <span key={label} class="aw-badge aw-badge-danger">
+                  {label}
+                </span>
+              ))}
+            </div>
+          ),
+      },
+      {
         header: "Last seen",
         accessorKey: "last_seen_at",
         cell: (ctx) => formatRelative(ctx.row.original.last_seen_at),
