@@ -18,4 +18,5 @@ func Routes(r *gin.RouterGroup) {
 	protected.GET("/reviews", ListReviews)
 	protected.POST("/reviews/:review_id/approve", ApproveReview)
 	protected.POST("/reviews/:review_id/reject", RejectReview)
+	protected.POST("/reviews/:review_id/ban", BanReviewSender)
 }

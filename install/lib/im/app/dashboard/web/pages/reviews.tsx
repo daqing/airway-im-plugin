@@ -39,6 +39,7 @@ function ReviewTable(props: { status: string }) {
   const queryClient = useQueryClient();
   const [inspectTarget, setInspectTarget] = useState<AdminReview | null>(null);
   const [decision, setDecision] = useState<Decision | null>(null);
+  const [banTarget, setBanTarget] = useState<AdminReview | null>(null);
 
   const reviews = useApiQuery<AdminReview[]>(["reviews", props.status], `/reviews?status=${props.status}`);
   const pending = props.status === "pending";
@@ -63,6 +64,25 @@ function ReviewTable(props: { status: string }) {
       toast.error(error instanceof Error ? error.message : "Review failed");
     },
     onSettled: () => setDecision(null),
+  });
+
+  const ban = useMutation({
+    mutationFn: (target: AdminReview) =>
+      apiPost<{ banned_user_uuid: string; connections_kicked: number }>(
+        `/reviews/${encodeURIComponent(target.id)}/ban`,
+      ),
+    onSuccess: (result, target) => {
+      toast.success(
+        `${target.sender_username} is permanently banned — ${result.connections_kicked} live connection(s) dropped`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["reviews"] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["status"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Ban failed");
+    },
+    onSettled: () => setBanTarget(null),
   });
 
   const columns = useMemo<ColumnDef<AdminReview, any>[]>(
@@ -177,6 +197,14 @@ function ReviewTable(props: { status: string }) {
                 onClick={() => setDecision({ review: ctx.row.original, approve: false })}
               >
                 Reject
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                title="Permanently ban the sender"
+                onClick={() => setBanTarget(ctx.row.original)}
+              >
+                Ban
               </Button>
             </div>
           ) : null,
@@ -317,6 +345,34 @@ function ReviewTable(props: { status: string }) {
                 delivered, and their later messages are queued for review.
               </>
             )}
+          </p>
+        )}
+      </Modal>
+
+      <Modal
+        open={banTarget !== null}
+        onClose={() => (ban.isPending ? undefined : setBanTarget(null))}
+        title="Ban user permanently"
+        footer={
+          <>
+            <Button onClick={() => setBanTarget(null)} disabled={ban.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={ban.isPending}
+              onClick={() => banTarget && ban.mutate(banTarget)}
+            >
+              Ban permanently
+            </Button>
+          </>
+        }
+      >
+        {banTarget && (
+          <p>
+            Permanently ban <strong>{banTarget.sender_username}</strong>? The message is discarded,
+            their account can no longer log in, and any live connection drops immediately. This
+            cannot be undone from the console.
           </p>
         )}
       </Modal>

@@ -10,6 +10,12 @@ package moderation
 // message attaches it to the sender, so their later messages are queued too.
 const LabelIllegal = "illegal"
 
+// LabelBanned marks a permanently banned account: authentication fails for
+// every credential presented by the user (see auth.UserFromHeader), the host
+// refuses to mint new ones, and their live connections are kicked when the
+// label is attached.
+const LabelBanned = "banned"
+
 // Review queue states (message_reviews.status).
 const (
 	ReviewPending  = "pending"

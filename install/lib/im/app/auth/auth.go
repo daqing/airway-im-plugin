@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/models"
+	"github.com/daqing/airway-im-plugin/install/lib/im/app/moderation"
 	"github.com/daqing/airway-im-plugin/install/lib/im/app/repo"
 )
 
@@ -151,8 +152,9 @@ func mintClaims(secret string, claims credentialClaims, ttl time.Duration) (stri
 }
 
 // UserFromHeader authenticates a standard Authorization header. A nil user
-// without error means the credential is missing, malformed, or invalid;
-// non-nil errors indicate backend failures.
+// without error means the credential is missing, malformed, invalid,
+// revoked, or belongs to a banned account; non-nil errors indicate backend
+// failures.
 func UserFromHeader(header string) (*models.User, error) {
 	credential, ok := Bearer(header)
 	if !ok {
@@ -167,6 +169,16 @@ func UserFromHeader(header string) (*models.User, error) {
 		return user, err
 	}
 	if claims.TokenVersion != 0 && claims.TokenVersion != user.TokenVersion {
+		return nil, nil
+	}
+	// A banned account fails closed: even an unexpired, correctly versioned
+	// credential must not authenticate, so a ban takes effect the moment it
+	// is attached rather than when the current session expires.
+	labels, err := moderation.ParseLabels(user.Labels)
+	if err != nil {
+		return nil, err
+	}
+	if labels.Has(moderation.LabelBanned) {
 		return nil, nil
 	}
 	return user, nil

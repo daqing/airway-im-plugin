@@ -32,6 +32,7 @@ func setupAuthTest(t *testing.T) {
 		email VARCHAR(255),
 		last_seen_at DATETIME,
 		token_version BIGINT NOT NULL DEFAULT 1,
+		labels TEXT NOT NULL DEFAULT '[]',
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`); err != nil {
@@ -176,6 +177,44 @@ func TestVersionedCredentialsAreRevocable(t *testing.T) {
 	if _, found, err := RevokeUser("nobody"); err != nil || found {
 		t.Fatalf("revoking unknown user: found=%v err=%v", found, err)
 	}
+}
+
+func TestUserFromHeaderRejectsBannedAccounts(t *testing.T) {
+	setupAuthTest(t)
+	db := repo.CurrentDB()
+	now := time.Now().UTC()
+	if _, err := db.Exec(`INSERT INTO users (uuid, username, token_version, labels, created_at, updated_at) VALUES ('u-banned', 'bob', 7, '["banned"]', ?, ?)`, now, now); err != nil {
+		t.Fatalf("insert banned user: %v", err)
+	}
+
+	// Unversioned and correctly versioned credentials alike: a banned
+	// account fails closed.
+	plain := mint(t, testSecret, "u-banned", "bob", "", "", time.Hour)
+	if got, err := UserFromHeader("Bearer " + plain); err != nil || got != nil {
+		t.Fatalf("banned user authenticated with an unversioned credential: user=%v err=%v", got, err)
+	}
+	versioned := mintVersioned(t, testSecret, "u-banned", "bob", 7, time.Hour)
+	if got, err := UserFromHeader("Bearer " + versioned); err != nil || got != nil {
+		t.Fatalf("banned user authenticated with a versioned credential: user=%v err=%v", got, err)
+	}
+
+	// A non-banned user still authenticates.
+	normal := mint(t, testSecret, "u-open", "alice", "", "", time.Hour)
+	if got, err := UserFromHeader("Bearer " + normal); err != nil || got == nil {
+		t.Fatalf("normal user rejected: user=%v err=%v", got, err)
+	}
+}
+
+// mintVersioned signs a credential carrying an explicit token_version claim
+// (MintCredential omits it), so a test can pin a version without issuing
+// through the users table.
+func mintVersioned(t *testing.T, secret, uuid, name string, version int64, ttl time.Duration) string {
+	t.Helper()
+	credential, err := mintClaims(secret, credentialClaims{UUID: uuid, Name: name, TokenVersion: version}, ttl)
+	if err != nil {
+		t.Fatalf("mint versioned credential: %v", err)
+	}
+	return credential
 }
 
 func TestResolveRefreshesNameButPreservesAbsentDisplayFields(t *testing.T) {
