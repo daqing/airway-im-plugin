@@ -83,10 +83,31 @@ func AddMembers(c *gin.Context) {
 		uuidByID[member.ID] = member.UUID
 	}
 
-	eventID, err := utils.NewULID()
-	if err != nil {
+	if _, err := addResolvedMembers(db, conversationUUID, memberIDs, uuidByID); err != nil {
 		respondError(c, http.StatusInternalServerError, 10000, "Could not add members")
 		return
+	}
+
+	memberList, err := loadActiveMembers(db, conversationUUID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, 10000, "Could not load conversation members")
+		return
+	}
+	respond(c, http.StatusOK, conversationDetailsResponse{
+		ConversationUUID: conversationUUID,
+		Type:             membership.Kind,
+		Members:          memberList,
+	})
+}
+
+// addResolvedMembers inserts or re-joins the given user IDs in a group
+// conversation and queues the conversation.member_added fan-out in one
+// transaction. It returns the uuids actually added (empty when every user was
+// already an active member, in which case no event is written).
+func addResolvedMembers(db *sqlx.DB, conversationUUID string, memberIDs []int64, uuidByID map[int64]string) ([]string, error) {
+	eventID, err := utils.NewULID()
+	if err != nil {
+		return nil, err
 	}
 	now := time.Now().UTC()
 	added := make([]string, 0, len(memberIDs))
@@ -127,20 +148,51 @@ func AddMembers(c *gin.Context) {
 		return err
 	})
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, 10000, "Could not add members")
-		return
+		return nil, err
+	}
+	return added, nil
+}
+
+// AddGroupMembersDirect adds members to an existing group conversation without
+// a caller-role check or gin context. It is the in-process entry point for
+// trusted hosts that have already authorized the membership change (for
+// example, accepting a group invitation the host recorded). The operation is
+// idempotent: already-active members are skipped, former members rejoin, and a
+// conversation.member_added event is queued only when someone actually
+// joined. Returns the uuids added.
+func AddGroupMembersDirect(conversationUUID string, memberUUIDs []string) ([]string, error) {
+	conversationUUID = strings.TrimSpace(conversationUUID)
+	if len(conversationUUID) != 26 {
+		return nil, errors.New("conversation uuid must be 26 characters")
+	}
+	cleaned := uniqueUUIDs(memberUUIDs)
+	if len(cleaned) == 0 {
+		return nil, errors.New("no members to add")
 	}
 
-	memberList, err := loadActiveMembers(db, conversationUUID)
-	if err != nil {
-		respondError(c, http.StatusInternalServerError, 10000, "Could not load conversation members")
-		return
+	db := repo.CurrentDB()
+	var kind string
+	if err := db.Get(&kind, db.Rebind("SELECT kind FROM conversations WHERE id = ?"), conversationUUID); err != nil {
+		return nil, err
 	}
-	respond(c, http.StatusOK, conversationDetailsResponse{
-		ConversationUUID: conversationUUID,
-		Type:             membership.Kind,
-		Members:          memberList,
-	})
+	if kind != "group" {
+		return nil, errors.New("members can only be added to group conversations")
+	}
+
+	resolved, err := resolveUsers(db, cleaned)
+	if err != nil {
+		return nil, err
+	}
+	if len(resolved) != len(cleaned) {
+		return nil, errors.New("one or more members do not exist")
+	}
+	memberIDs := make([]int64, 0, len(resolved))
+	uuidByID := make(map[int64]string, len(resolved))
+	for _, member := range resolved {
+		memberIDs = append(memberIDs, member.ID)
+		uuidByID[member.ID] = member.UUID
+	}
+	return addResolvedMembers(db, conversationUUID, memberIDs, uuidByID)
 }
 
 func loadActiveMembers(db *sqlx.DB, conversationUUID string) ([]conversationMemberResponse, error) {

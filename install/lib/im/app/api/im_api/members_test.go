@@ -148,6 +148,47 @@ func TestAddMembersSkipsActiveMembersWithoutEvent(t *testing.T) {
 	}
 }
 
+func TestAddGroupMembersDirectSkipsCallerCheck(t *testing.T) {
+	setupGroupTestRouter(t)
+	conversationUUID := seedGroup(t)
+
+	added, err := AddGroupMembersDirect(conversationUUID, []string{"uuid-carol", "uuid-carol", ""})
+	if err != nil {
+		t.Fatalf("add direct: %v", err)
+	}
+	if len(added) != 1 || added[0] != "uuid-carol" {
+		t.Fatalf("added = %#v", added)
+	}
+
+	db := repo.CurrentDB()
+	var role string
+	if err := db.Get(&role, "SELECT role FROM conversation_members WHERE conversation_id = ? AND user_id = 4 AND left_at IS NULL", conversationUUID); err != nil {
+		t.Fatalf("load member: %v", err)
+	}
+	if role != "member" {
+		t.Fatalf("role = %q", role)
+	}
+	var eventCount int
+	if err := db.Get(&eventCount, "SELECT COUNT(*) FROM outbox_events WHERE topic = 'conversation.member_added'"); err != nil {
+		t.Fatalf("count events: %v", err)
+	}
+	if eventCount != 1 {
+		t.Fatalf("events = %d", eventCount)
+	}
+}
+
+func TestAddGroupMembersDirectRejectsDirectConversation(t *testing.T) {
+	setupGroupTestRouter(t)
+	db := repo.CurrentDB()
+	conversationUUID := "01J2Q7D4N5R8TK6VD3SZ1H0Y7M"
+	if _, err := db.Exec(`INSERT INTO conversations (id, kind, title, created_by, next_sequence, created_at, updated_at) VALUES (?, 'direct', NULL, 1, 1, '2026-07-24 00:00:00', '2026-07-24 00:00:00')`, conversationUUID); err != nil {
+		t.Fatalf("seed direct conversation: %v", err)
+	}
+	if _, err := AddGroupMembersDirect(conversationUUID, []string{"uuid-carol"}); err == nil {
+		t.Fatal("expected direct conversations to be rejected")
+	}
+}
+
 func TestAddMembersAdminAllowedMemberForbidden(t *testing.T) {
 	router := setupGroupTestRouter(t)
 	conversationUUID := seedGroup(t)
