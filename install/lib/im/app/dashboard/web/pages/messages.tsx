@@ -36,7 +36,17 @@ export function ConversationMessages(props: { conversationId: string }) {
     onSettled: () => setModerateTarget(null),
   });
 
-  const conversation = (conversations.data ?? []).find((c) => c.id === props.conversationId);  const columns = useMemo<ColumnDef<AdminMessage, any>[]>(
+  const conversation = (conversations.data ?? []).find((c) => c.id === props.conversationId);
+  // Newest first: the API returns messages in sequence (chronological) order.
+  const orderedMessages = useMemo(
+    () =>
+      [...(messages.data ?? [])].sort((a, b) => {
+        const byCreatedAt = Date.parse(b.created_at) - Date.parse(a.created_at);
+        return byCreatedAt !== 0 ? byCreatedAt : b.sequence - a.sequence;
+      }),
+    [messages.data],
+  );
+  const columns = useMemo<ColumnDef<AdminMessage, any>[]>(
     () => [
       { header: "Seq", accessorKey: "sequence", cell: (ctx) => <span class="admin-mono">#{ctx.row.original.sequence}</span> },
       {
@@ -144,7 +154,7 @@ export function ConversationMessages(props: { conversationId: string }) {
     >
       <DataTable
         columns={columns}
-        data={messages.data ?? []}
+        data={orderedMessages}
         pageSize={20}
         empty={{ title: "No messages in this conversation yet" }}
       />
