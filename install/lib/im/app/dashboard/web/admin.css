@@ -109,6 +109,7 @@ body {
 .admin-page-subtitle { font-size: 13px; color: var(--aw-muted); margin-top: 5px; }
 .admin-page-toolbar { display: flex; align-items: center; gap: 10px; }
 .admin-search { width: 260px; }
+.admin-filters { display: flex; align-items: center; gap: 6px; }
 
 .admin-center {
   display: flex;

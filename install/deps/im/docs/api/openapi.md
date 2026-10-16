@@ -698,9 +698,18 @@ paths:
       description: >-
         Lists identities registered automatically the first time an Airway-signed
         credential authenticated. last_seen_at shows the most recent
-        authenticated activity at five-minute granularity.
+        authenticated activity at five-minute granularity. Results are ordered by
+        creation time, newest first; the optional label filter keeps that order.
       security:
         - adminBearerAuth: []
+      parameters:
+        - name: label
+          in: query
+          required: false
+          description: >-
+            Keep only identities carrying this moderation label, e.g. `banned` for
+            permanently banned accounts.
+          schema: { type: string }
       responses:
         '200':
           description: Users ordered by creation time, newest first.

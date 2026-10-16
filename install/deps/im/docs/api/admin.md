@@ -12,7 +12,7 @@ hours; restarting the backend invalidates all sessions.
 | `POST` | `/admin/api/login` | Exchange administrator credentials for a session token. |
 | `POST` | `/admin/api/logout` | Revoke the current session. |
 | `GET` | `/admin/api/status` | Aggregate user, outbox, Gateway, and Delivery metrics. |
-| `GET` | `/admin/api/users` | List automatically registered user identities. |
+| `GET` | `/admin/api/users` | List automatically registered user identities, newest first. Optional `?label=<label>` narrows the listing to identities carrying that moderation label, e.g. `?label=banned` for permanently banned accounts. |
 | `POST` | `/admin/api/users/{uuid}/revoke` | Invalidate the user's minted credentials (bumps `token_version`) and kick live Gateway connections. |
 | `GET` | `/admin/api/conversations` | List conversations of every kind with counters. Optional `?kind=group` or `?kind=direct` narrows the listing; direct entries carry their `participants`. |
 | `GET` | `/admin/api/conversations/{id}/messages` | List all messages in a conversation (group or direct). |
@@ -53,7 +53,8 @@ decision: acting twice on the same entry returns 409, an unknown id returns
 The plugin ships no user login flow. Users register automatically the first
 time an Airway-signed credential authenticates (see
 [`../design/identity.md`](../design/identity.md)); `GET /admin/api/users`
-lists those registered identities for operational visibility.
+lists those registered identities for operational visibility, newest first,
+and `?label=banned` narrows the listing to the permanently banned accounts.
 
 `POST /admin/api/users/{uuid}/revoke` invalidates every credential the
 backend minted for that user (by bumping `token_version`) and best-effort

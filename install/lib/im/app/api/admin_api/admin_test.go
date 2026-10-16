@@ -155,6 +155,38 @@ func TestAdminListsAllUsers(t *testing.T) {
 	}
 }
 
+func TestAdminFiltersUsersByLabel(t *testing.T) {
+	router := setupAdminRouter(t)
+	_, err := repo.CurrentDB().Exec(`INSERT INTO users
+		(uuid, username, labels, created_at, updated_at)
+		VALUES ('host-old', 'oldban', '["banned"]', '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+		       ('host-new', 'newban', '["banned"]', '2024-02-01 00:00:00', '2024-02-01 00:00:00'),
+		       ('host-clean', 'clean', '[]', '2024-03-01 00:00:00', '2024-03-01 00:00:00')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token := loginAdmin(t, router)
+	request := httptest.NewRequest(http.MethodGet, "/admin/api/users?label=banned", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("filtered list status %d: %s", response.Code, response.Body.String())
+	}
+	body := response.Body.Bytes()
+	if !bytes.Contains(body, []byte("host-new")) || !bytes.Contains(body, []byte("host-old")) {
+		t.Fatalf("filtered list missing banned users: %s", body)
+	}
+	if bytes.Contains(body, []byte("host-clean")) {
+		t.Fatalf("filtered list includes an unbanned user: %s", body)
+	}
+	// The label filter keeps the newest-first order.
+	if bytes.Index(body, []byte("host-new")) > bytes.Index(body, []byte("host-old")) {
+		t.Fatalf("banned users are not newest first: %s", body)
+	}
+}
+
 func TestAdminRevokesUserCredentials(t *testing.T) {
 	router := setupAdminRouter(t)
 	db := repo.CurrentDB()

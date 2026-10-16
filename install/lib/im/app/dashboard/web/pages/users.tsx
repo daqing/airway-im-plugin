@@ -18,9 +18,14 @@ export function Users() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [label, setLabel] = useState("");
   const [revokeTarget, setRevokeTarget] = useState<AdminUser | null>(null);
 
-  const users = useApiQuery<AdminUser[]>(["users"], "/users", USERS_REFETCH_MS);
+  const users = useApiQuery<AdminUser[]>(
+    ["users", label],
+    label ? `/users?label=${encodeURIComponent(label)}` : "/users",
+    USERS_REFETCH_MS,
+  );
 
   const revoke = useMutation({
     mutationFn: (user: AdminUser) => apiPost<RevokeResult>(`/users/${encodeURIComponent(user.uuid)}/revoke`),
@@ -147,17 +152,49 @@ export function Users() {
     return <ErrorBanner message={(users.error as Error).message} />;
   }
 
+  const banned = label === "banned";
+
   return (
     <Page
       title="Users"
-      subtitle={`${formatNumber((users.data ?? []).length)} registered identit(ies) · identities appear when a host-signed credential first authenticates`}
-      toolbar={<Input class="admin-search" placeholder="Search username, email, UUID…" value={search} onInput={(e) => setSearch((e.target as HTMLInputElement).value)} />}
+      subtitle={
+        banned
+          ? `${formatNumber(filtered.length)} permanently banned identit(ies) · newest first`
+          : `${formatNumber((users.data ?? []).length)} registered identit(ies) · identities appear when a host-signed credential first authenticates`
+      }
+      toolbar={
+        <>
+          <div class="admin-filters" role="group" aria-label="Filter by moderation label">
+            <Button size="sm" variant={label === "" ? "primary" : "secondary"} onClick={() => setLabel("")}>
+              All
+            </Button>
+            <Button
+              size="sm"
+              variant={banned ? "primary" : "secondary"}
+              onClick={() => setLabel("banned")}
+            >
+              Banned
+            </Button>
+          </div>
+          <Input
+            class="admin-search"
+            placeholder="Search username, email, UUID…"
+            value={search}
+            onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+          />
+        </>
+      }
     >
       <DataTable
         columns={columns}
         data={filtered}
         pageSize={15}
-        empty={{ title: "No users yet", description: "Identities show up once clients sign in with host-signed credentials." }}
+        empty={{
+          title: banned ? "No banned users" : "No users yet",
+          description: banned
+            ? "Permanently banned accounts appear here once an operator bans a sender from the review queue."
+            : "Identities show up once clients sign in with host-signed credentials.",
+        }}
       />
 
       <Modal

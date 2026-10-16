@@ -522,7 +522,7 @@ pages cover the whole `/admin/api` surface:
 | Page | What you can do |
 | --- | --- |
 | **Overview** | Registered users, online count, outbox pending/published (with backlog age and failed attempts), and live gateway/delivery metrics panels; auto-refreshes every 15s and flags degraded services. |
-| **Users** | Searchable identity directory (username, nickname, email, UUID, last seen, token version, moderation labels) with one-click **credential revocation** — bumps `token_version` and reports how many live gateway connections were kicked. |
+| **Users** | Searchable identity directory (username, nickname, email, UUID, last seen, token version, moderation labels) with an **All / Banned** filter that narrows the list to permanently banned accounts (newest first), plus one-click **credential revocation** — bumps `token_version` and reports how many live gateway connections were kicked. |
 | **Conversations** | Group and direct conversations on two tabs — groups with member/message counts, direct chats labeled by their participant pair; search across both, click a row to inspect its messages. |
 | **Messages** | Per-conversation message list (sequence, sender, content, type, status); open a message for detail and **mark it illegal** — content is masked to `***` for clients and a `message.moderated` event fans out to online members. |
 | **Review queue** | Messages held before delivery on pending/approved/rejected tabs, with the queued time, sender, conversation, the labels that flagged them, and the full content behind a click; **Approve** releases a pending message into its conversation, **Reject** discards it and labels the sender `illegal`. |
